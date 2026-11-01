@@ -31,6 +31,8 @@ import androidx.navigation.compose.rememberNavController
 import com.jamilcpu.homestudio.AppContainer
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
 import com.jamilcpu.homestudio.data.NowPlayingRepository
+import com.jamilcpu.homestudio.ui.agent.AgentRoute
+import com.jamilcpu.homestudio.ui.agent.AgentViewModel
 import com.jamilcpu.homestudio.ui.connect.ConnectScreen
 import com.jamilcpu.homestudio.ui.now.NowPlayingRoute
 import kotlinx.coroutines.flow.StateFlow
@@ -77,6 +79,9 @@ private fun AppShell(
     nowRepo: NowPlayingRepository,
     nav: NavHostController = rememberNavController(),
 ) {
+    val scope = rememberCoroutineScope()
+    // Hoisted above the NavHost so a half-typed request survives switching tabs.
+    val agentVm = remember(api) { AgentViewModel(api, scope) }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     Scaffold(
@@ -123,6 +128,8 @@ private fun AppShell(
                             onRate = { /* Rate sheet arrives in Task 6. */ },
                             onAskAgent = { nav.switchTab(Routes.AGENT) },
                         )
+                    } else if (r == Routes.AGENT) {
+                        AgentRoute(agentVm)
                     } else {
                         PlaceholderScreen(r)
                     }
@@ -140,7 +147,7 @@ private fun NavHostController.switchTab(route: String) {
     }
 }
 
-/** Stand-in until the real screens land (Tasks 4-6). */
+/** Stand-in until the real screens land (Tasks 6-8). */
 @Composable
 private fun PlaceholderScreen(route: String) {
     Box(Modifier.testTag("screen_$route"), contentAlignment = Alignment.Center) {
