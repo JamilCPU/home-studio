@@ -36,6 +36,8 @@ import com.jamilcpu.homestudio.data.NowPlayingRepository
 import com.jamilcpu.homestudio.ui.agent.AgentRoute
 import com.jamilcpu.homestudio.ui.agent.AgentViewModel
 import com.jamilcpu.homestudio.ui.connect.ConnectScreen
+import com.jamilcpu.homestudio.ui.history.HistoryRoute
+import com.jamilcpu.homestudio.ui.history.HistoryViewModel
 import com.jamilcpu.homestudio.ui.now.NowPlayingRoute
 import com.jamilcpu.homestudio.ui.queue.QueueRoute
 import com.jamilcpu.homestudio.ui.queue.QueueViewModel
@@ -97,10 +99,12 @@ private fun AppShell(
     // Hoisted above the NavHost so a half-typed request survives switching tabs.
     val agentVm = remember(api) { AgentViewModel(api, scope) }
     val queueVm = remember(api) { QueueViewModel(api, scope) }
+    val historyVm = remember(api) { HistoryViewModel(api, scope) }
     val snackbar = remember { SnackbarHostState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     RateSheetHost(rateSheet, api) {
+        historyVm.refresh()
         scope.launch { snackbar.showSnackbar(RATED_MESSAGE) }
     }
     Scaffold(
@@ -152,7 +156,8 @@ private fun AppShell(
             }
             composable(Routes.AGENT) { AgentRoute(agentVm) }
             composable(Routes.QUEUE) { QueueRoute(queueVm) }
-            listOf(Routes.HISTORY, Routes.TASTE, Routes.MORNING).forEach { r ->
+            composable(Routes.HISTORY) { HistoryRoute(historyVm, rateSheet) }
+            listOf(Routes.TASTE, Routes.MORNING).forEach { r ->
                 composable(r) { PlaceholderScreen(r) }
             }
         }
