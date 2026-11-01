@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.jamilcpu.homestudio.data.api.MorningDto
 import com.jamilcpu.homestudio.ui.theme.HomeStudioTheme
 import org.junit.Assert.assertEquals
@@ -41,8 +42,8 @@ class MorningScreenTest {
         rule.onNodeWithText("7:45 AM").assertExists()
         rule.onNodeWithText("Central Time · agent starts picking at 7:30 AM").assertExists()
         rule.onNodeWithTag("lead_value").assertExists()
-        rule.onNodeWithTag("lead_plus").performClick()
-        rule.onNodeWithTag("lead_minus").performClick()
+        rule.onNodeWithTag("lead_plus").performScrollTo().performClick()
+        rule.onNodeWithTag("lead_minus").performScrollTo().performClick()
         assertEquals(listOf(16, 14), leads)
     }
 
@@ -57,11 +58,11 @@ class MorningScreenTest {
         )
         rule.onNodeWithTag("day_0").assertIsSelected()
         rule.onNodeWithTag("day_1").assertIsNotSelected()
-        rule.onNodeWithTag("day_6").performClick()
-        rule.onNodeWithTag("topic_hardware").performClick()
-        rule.onNodeWithTag("count_plus").performClick()
+        rule.onNodeWithTag("day_6").performScrollTo().performClick()
+        rule.onNodeWithTag("topic_hardware").performScrollTo().performClick()
+        rule.onNodeWithTag("count_plus").performScrollTo().performClick()
         rule.onNodeWithText("+ add").assertExists()
-        rule.onNodeWithText("▶ Test it now").assertExists()
+        rule.onNodeWithText("▶ Test it now").performScrollTo().assertExists()
         assertEquals(listOf(6), days)
         assertEquals(listOf("hardware"), removed)
         assertEquals(listOf(4), counts)

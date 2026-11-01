@@ -1,7 +1,6 @@
 package com.jamilcpu.homestudio.ui
 
 import android.util.Log
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -21,7 +20,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -38,6 +36,8 @@ import com.jamilcpu.homestudio.ui.agent.AgentViewModel
 import com.jamilcpu.homestudio.ui.connect.ConnectScreen
 import com.jamilcpu.homestudio.ui.history.HistoryRoute
 import com.jamilcpu.homestudio.ui.history.HistoryViewModel
+import com.jamilcpu.homestudio.ui.morning.MorningRoute
+import com.jamilcpu.homestudio.ui.morning.MorningViewModel
 import com.jamilcpu.homestudio.ui.now.NowPlayingRoute
 import com.jamilcpu.homestudio.ui.queue.QueueRoute
 import com.jamilcpu.homestudio.ui.queue.QueueViewModel
@@ -103,6 +103,7 @@ private fun AppShell(
     val queueVm = remember(api) { QueueViewModel(api, scope) }
     val historyVm = remember(api) { HistoryViewModel(api, scope) }
     val tasteVm = remember(api) { TasteViewModel(api, scope) }
+    val morningVm = remember(api) { MorningViewModel(api, scope) }
     val snackbar = remember { SnackbarHostState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
@@ -161,7 +162,7 @@ private fun AppShell(
             composable(Routes.QUEUE) { QueueRoute(queueVm) }
             composable(Routes.HISTORY) { HistoryRoute(historyVm, rateSheet) }
             composable(Routes.TASTE) { TasteRoute(tasteVm) }
-            composable(Routes.MORNING) { PlaceholderScreen(Routes.MORNING) }
+            composable(Routes.MORNING) { MorningRoute(morningVm, onTestStarted = { nav.switchTab(Routes.AGENT) }) }
         }
     }
 }
@@ -171,13 +172,5 @@ private fun NavHostController.switchTab(route: String) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
-    }
-}
-
-/** Stand-in until the real screens land (Tasks 6-8). */
-@Composable
-private fun PlaceholderScreen(route: String) {
-    Box(Modifier.testTag("screen_$route"), contentAlignment = Alignment.Center) {
-        Text(titleFor(route))
     }
 }
