@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import com.jamilcpu.homestudio.ui.common.UnreachableBanner
+import com.jamilcpu.homestudio.ui.now.NOTICE_QUEUE_EMPTY
 
 data class QueueActions(
     val onRetry: () -> Unit = {},
@@ -101,7 +102,7 @@ fun QueueScreen(state: QueueUiState, actions: QueueActions) {
 private fun Header(state: QueueUiState, onSearch: () -> Unit, onClear: () -> Unit) {
     when {
         state.items.isNotEmpty() -> Text(endsInLabel(state.remainingS), style = MaterialTheme.typography.bodyMedium)
-        state.loaded -> Text("Queue empty", style = MaterialTheme.typography.bodyMedium)
+        state.loaded -> Text(NOTICE_QUEUE_EMPTY, style = MaterialTheme.typography.bodyMedium)
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(onClick = onSearch, modifier = Modifier.testTag("openSearch")) { Text("🔍 Search / add") }
