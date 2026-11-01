@@ -1,6 +1,8 @@
 package com.jamilcpu.homestudio.ui.rate
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -75,7 +77,12 @@ fun RateSheetHost(controller: RateSheetController, api: HomeStudioApi, onRated: 
 @Composable
 fun RateSheetContent(title: String?, state: RateUiState, actions: RateActions) {
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding(),
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 16.dp)
+            .navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(title ?: "Rate", style = MaterialTheme.typography.titleMedium)

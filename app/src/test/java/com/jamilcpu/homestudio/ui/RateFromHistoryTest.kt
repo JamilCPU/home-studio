@@ -1,5 +1,7 @@
 package com.jamilcpu.homestudio.ui
 
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -7,6 +9,7 @@ import androidx.compose.ui.test.performClick
 import com.jamilcpu.homestudio.FakeServer
 import com.jamilcpu.homestudio.bodyText
 import com.jamilcpu.homestudio.ui.rate.RateSheetController
+import com.jamilcpu.homestudio.ui.rate.tap
 import com.jamilcpu.homestudio.ui.theme.HomeStudioTheme
 import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,8 +52,9 @@ class RateFromHistoryTest {
         rule.onNodeWithText("How GPUs Work").performClick()
         waitFor { rule.onNodeWithTag("rateSheet").assertExists() }
         assertEquals("dQw4w9WgXcQ", controller.target.value?.videoId)
-        rule.onNodeWithText("👍 Like").performClick()
-        rule.onNodeWithTag("rateSave").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("👍 Like").tap().assertIsSelected()
+        rule.onNodeWithTag("rateSave").assertIsEnabled().tap()
         rule.waitUntil(5_000) { server.calls("POST", "/api/ratings").isNotEmpty() }
         assertEquals(
             """{"video_id":"dQw4w9WgXcQ","liked":true}""",
