@@ -16,6 +16,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -60,6 +61,7 @@ fun HomeStudioRoot(container: AppContainer) {
         container.api,
         nowRepo = container.nowPlaying,
         rateSheet = container.rateSheet,
+        tabRequests = container.tabRequests,
     ) { url ->
         scope.launch {
             try {
@@ -78,6 +80,7 @@ fun HomeStudioRoot(
     api: HomeStudioApi,
     nowRepo: NowPlayingRepository? = null,
     rateSheet: RateSheetController = remember { RateSheetController() },
+    tabRequests: TabRequests = remember { TabRequests() },
     onSaveUrl: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -85,7 +88,7 @@ fun HomeStudioRoot(
     if (url == null) {
         ConnectScreen(api = api, onSave = onSaveUrl)
     } else {
-        AppShell(api, nowRepo ?: remember(api) { NowPlayingRepository(api, scope) }, rateSheet)
+        AppShell(api, nowRepo ?: remember(api) { NowPlayingRepository(api, scope) }, rateSheet, tabRequests)
     }
 }
 
@@ -95,6 +98,7 @@ private fun AppShell(
     api: HomeStudioApi,
     nowRepo: NowPlayingRepository,
     rateSheet: RateSheetController,
+    tabRequests: TabRequests,
     nav: NavHostController = rememberNavController(),
 ) {
     val scope = rememberCoroutineScope()
@@ -107,6 +111,15 @@ private fun AppShell(
     val snackbar = remember { SnackbarHostState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
+    val requestedTab by tabRequests.requested.collectAsState()
+    // Waits for the first back stack entry: the NavHost's graph is set only once it has composed.
+    val graphReady = entry != null
+    LaunchedEffect(requestedTab, graphReady) {
+        val target = requestedTab ?: return@LaunchedEffect
+        if (!graphReady) return@LaunchedEffect
+        nav.switchTab(target)
+        tabRequests.consume()
+    }
     RateSheetHost(rateSheet, api) {
         historyVm.refresh()
         scope.launch { snackbar.showSnackbar(RATED_MESSAGE) }

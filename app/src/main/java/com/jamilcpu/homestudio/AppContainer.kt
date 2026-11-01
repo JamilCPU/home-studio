@@ -4,6 +4,7 @@ import android.content.Context
 import com.jamilcpu.homestudio.data.NowPlayingRepository
 import com.jamilcpu.homestudio.data.Settings
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
+import com.jamilcpu.homestudio.ui.TabRequests
 import com.jamilcpu.homestudio.ui.rate.RateSheetController
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,9 @@ class AppContainer(context: Context) {
     /** Shared by the Now Playing screen and, later, the notification service. */
     val nowPlaying: NowPlayingRepository = NowPlayingRepository(api, scope)
 
-    /** The shell's Rate sheet; the notification (Task 7) opens it through here too. */
+    /** The shell's Rate sheet; the notification tap opens it through here too. */
     val rateSheet: RateSheetController = RateSheetController()
+
+    /** Tab switches asked for from outside the shell (the notification tap). */
+    val tabRequests: TabRequests = TabRequests()
 }
