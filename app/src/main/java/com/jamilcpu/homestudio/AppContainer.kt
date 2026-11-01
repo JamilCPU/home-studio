@@ -1,6 +1,7 @@
 package com.jamilcpu.homestudio
 
 import android.content.Context
+import com.jamilcpu.homestudio.data.NowPlayingRepository
 import com.jamilcpu.homestudio.data.Settings
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
 import io.ktor.client.engine.okhttp.OkHttp
@@ -29,4 +30,7 @@ class AppContainer(context: Context) {
         )
 
     val api: HomeStudioApi = HomeStudioApi(baseUrl = { serverUrl.value }, engine = OkHttp.create())
+
+    /** Shared by the Now Playing screen and, later, the notification service. */
+    val nowPlaying: NowPlayingRepository = NowPlayingRepository(api, scope)
 }

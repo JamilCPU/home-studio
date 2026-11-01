@@ -17,6 +17,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +30,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.jamilcpu.homestudio.AppContainer
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
+import com.jamilcpu.homestudio.data.NowPlayingRepository
 import com.jamilcpu.homestudio.ui.connect.ConnectScreen
+import com.jamilcpu.homestudio.ui.now.NowPlayingRoute
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -39,7 +42,7 @@ private const val TAG = "HomeStudioRoot"
 @Composable
 fun HomeStudioRoot(container: AppContainer) {
     val scope = rememberCoroutineScope()
-    HomeStudioRoot(container.serverUrl, container.api) { url ->
+    HomeStudioRoot(container.serverUrl, container.api, nowRepo = container.nowPlaying) { url ->
         scope.launch {
             try {
                 container.settings.setServerUrl(url)
@@ -55,19 +58,25 @@ fun HomeStudioRoot(container: AppContainer) {
 fun HomeStudioRoot(
     serverUrl: StateFlow<String?>,
     api: HomeStudioApi,
+    nowRepo: NowPlayingRepository? = null,
     onSaveUrl: (String) -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     val url by serverUrl.collectAsState()
     if (url == null) {
         ConnectScreen(api = api, onSave = onSaveUrl)
     } else {
-        AppShell()
+        AppShell(api, nowRepo ?: remember(api) { NowPlayingRepository(api, scope) })
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AppShell(nav: NavHostController = rememberNavController()) {
+private fun AppShell(
+    api: HomeStudioApi,
+    nowRepo: NowPlayingRepository,
+    nav: NavHostController = rememberNavController(),
+) {
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     Scaffold(
@@ -106,7 +115,18 @@ private fun AppShell(nav: NavHostController = rememberNavController()) {
     ) { padding ->
         NavHost(nav, startDestination = Routes.START, modifier = Modifier.padding(padding)) {
             (BottomTabs.map { it.route } + Routes.MORNING).forEach { r ->
-                composable(r) { PlaceholderScreen(r) }
+                composable(r) {
+                    if (r == Routes.NOW) {
+                        NowPlayingRoute(
+                            repo = nowRepo,
+                            api = api,
+                            onRate = { /* Rate sheet arrives in Task 6. */ },
+                            onAskAgent = { nav.switchTab(Routes.AGENT) },
+                        )
+                    } else {
+                        PlaceholderScreen(r)
+                    }
+                }
             }
         }
     }

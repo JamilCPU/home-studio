@@ -1,6 +1,8 @@
 package com.jamilcpu.homestudio.data
 
+import com.jamilcpu.homestudio.awaitUntil
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
+import com.jamilcpu.homestudio.settle
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.ContentType
@@ -12,7 +14,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -47,16 +48,17 @@ class NowPlayingRepositoryTest {
     fun pollsNowEverySecondAndStatusEvery15s() = runTest {
         val r = rig()
         r.repo.start()
-        runCurrent()
+        awaitUntil { r.repo.now.value != null && r.repo.status.value != null }
         assertEquals(1, r.count("/api/now"))
         assertEquals(1, r.count("/api/status"))
-        advanceTimeBy(3_100)
-        assertEquals(4, r.count("/api/now"))
+        for (tick in 1..14) {
+            advanceTimeBy(1_000)
+            awaitUntil { r.count("/api/now") == 1 + tick }
+        }
         assertEquals(1, r.count("/api/status"))
-        advanceTimeBy(12_000)
-        assertEquals(2, r.count("/api/status"))
+        advanceTimeBy(1_000)
+        awaitUntil { r.count("/api/status") == 2 }
         assertNotNull(r.repo.now.value)
-        assertNotNull(r.repo.status.value)
         r.repo.stop()
     }
 
@@ -65,12 +67,14 @@ class NowPlayingRepositoryTest {
         val r = rig()
         r.repo.start()
         r.repo.start()
-        runCurrent()
+        awaitUntil { r.repo.now.value != null && r.repo.status.value != null }
+        settle()
         assertEquals(1, r.count("/api/now"))
         r.repo.stop()
         r.repo.stop()
         val before = r.engine.requestHistory.size
         advanceTimeBy(5_000)
+        settle()
         assertEquals(before, r.engine.requestHistory.size)
     }
 
@@ -79,13 +83,15 @@ class NowPlayingRepositoryTest {
         var down = false
         val r = rig { down }
         r.repo.start()
-        runCurrent()
+        awaitUntil { r.repo.now.value != null }
         assertTrue(r.repo.reachable.value)
         down = true
         advanceTimeBy(1_000)
+        awaitUntil { !r.repo.reachable.value }
         assertFalse(r.repo.reachable.value)
         down = false
         advanceTimeBy(1_000)
+        awaitUntil { r.repo.reachable.value }
         assertTrue(r.repo.reachable.value)
         r.repo.stop()
     }

@@ -3,6 +3,7 @@ package com.jamilcpu.homestudio.ui.now
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.jamilcpu.homestudio.data.api.QueueItemDto
 import com.jamilcpu.homestudio.ui.theme.HomeStudioTheme
 import org.junit.Assert.assertEquals
@@ -88,7 +89,7 @@ class NowPlayingScreenTest {
     fun rateButtonPassesVideoId() {
         var rated: String? = null
         show(playing, NowPlayingActions(onRate = { rated = it }))
-        rule.onNodeWithText("✏️ Rate").performClick()
+        rule.onNodeWithText("✏️ Rate").performScrollTo().performClick()
         assertEquals("abc", rated)
     }
 }

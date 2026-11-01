@@ -1,7 +1,9 @@
 package com.jamilcpu.homestudio.ui.now
 
+import com.jamilcpu.homestudio.awaitUntil
 import com.jamilcpu.homestudio.data.NowPlayingRepository
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
+import com.jamilcpu.homestudio.settle
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
@@ -14,7 +16,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -42,6 +43,8 @@ class NowPlayingViewModelTest {
     private class Rig(val engine: MockEngine, val vm: NowPlayingViewModel, val repo: NowPlayingRepository) {
         fun posts(path: String): List<HttpRequestData> =
             engine.requestHistory.filter { it.method.value == "POST" && it.url.encodedPath == path }
+
+        fun nowGets(): Int = engine.requestHistory.count { it.url.encodedPath == "/api/now" }
     }
 
     private fun HttpRequestData.bodyText() = (body as TextContent).text
@@ -68,18 +71,22 @@ class NowPlayingViewModelTest {
         var pos = 100.0
         val r = rig { pos }
         r.repo.start()
-        runCurrent()
-        assertEquals(100.0, r.vm.uiState.value.positionS, 0.001)
+        awaitUntil { r.vm.uiState.value.positionS == 100.0 }
         r.vm.onDragStart()
         r.vm.onDrag(400f)
         pos = 105.0
-        advanceTimeBy(3_000)
+        for (tick in 1..3) {
+            advanceTimeBy(1_000)
+            awaitUntil { r.nowGets() == 1 + tick }
+        }
+        awaitUntil { r.vm.uiState.value.positionS == 105.0 }
         assertEquals(400f, r.vm.uiState.value.dragPositionS)
         assertEquals(400.0, r.vm.uiState.value.displayPositionS, 0.001)
         assertEquals(0, r.posts("/api/player/seek").size)
         r.vm.onDragEnd()
         r.vm.onDragEnd()
-        runCurrent()
+        awaitUntil { r.posts("/api/player/seek").isNotEmpty() }
+        settle()
         assertEquals(1, r.posts("/api/player/seek").size)
         assertEquals("""{"position_s":400.0}""", r.posts("/api/player/seek").single().bodyText())
         assertNull(r.vm.uiState.value.dragPositionS)
@@ -90,8 +97,9 @@ class NowPlayingViewModelTest {
     fun skipButtonsSendMinus15Plus30() = runTest {
         val r = rig()
         r.vm.skipBack()
+        awaitUntil { r.posts("/api/player/skip").size == 1 }
         r.vm.skipForward()
-        runCurrent()
+        awaitUntil { r.posts("/api/player/skip").size == 2 }
         val bodies = r.posts("/api/player/skip").map { it.bodyText() }
         assertEquals(listOf("""{"delta_s":-15.0}""", """{"delta_s":30.0}"""), bodies)
     }
@@ -103,10 +111,9 @@ class NowPlayingViewModelTest {
         r.vm.next()
         r.vm.previous()
         r.vm.chapterTapped(300.0)
-        runCurrent()
-        assertEquals(1, r.posts("/api/player/toggle").size)
-        assertEquals(1, r.posts("/api/player/next").size)
-        assertEquals(1, r.posts("/api/player/previous").size)
+        awaitUntil {
+            listOf("toggle", "next", "previous", "seek").all { r.posts("/api/player/$it").size == 1 }
+        }
         assertEquals("""{"position_s":300.0}""", r.posts("/api/player/seek").single().bodyText())
     }
 
@@ -114,7 +121,7 @@ class NowPlayingViewModelTest {
     fun openInYoutubeUriHasTimestamp() = runTest {
         val r = rig { 451.7 }
         r.repo.start()
-        runCurrent()
+        awaitUntil { r.vm.uiState.value.item != null }
         assertEquals("https://www.youtube.com/watch?v=abc123&t=451s", r.vm.openInYoutubeUri().toString())
         r.repo.stop()
     }
@@ -123,11 +130,10 @@ class NowPlayingViewModelTest {
     fun quickRateSendsLikedOnly() = runTest {
         val r = rig()
         r.repo.start()
-        runCurrent()
+        awaitUntil { r.vm.uiState.value.item != null }
         r.vm.quickRate(true)
-        runCurrent()
+        awaitUntil { r.vm.uiState.value.quickRating == true }
         assertEquals("""{"video_id":"abc123","liked":true}""", r.posts("/api/ratings").single().bodyText())
-        assertEquals(true, r.vm.uiState.value.quickRating)
         r.repo.stop()
     }
 
@@ -135,7 +141,7 @@ class NowPlayingViewModelTest {
     fun currentChapterFollowsPosition() = runTest {
         val r = rig { 451.7 }
         r.repo.start()
-        runCurrent()
+        awaitUntil { r.vm.uiState.value.item != null }
         assertEquals("Part 2", r.vm.uiState.value.currentChapter?.title)
         assertNotNull(r.vm.uiState.value.item)
         r.repo.stop()
