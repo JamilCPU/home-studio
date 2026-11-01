@@ -30,10 +30,17 @@ class MainActivity : ComponentActivity() {
             openRateIfRequested(intent)
             notificationPermission.requestOnce()
         }
-        // Only while visible: Android forbids starting services from the background.
+        // Only while visible: Android forbids starting services from the background. Holding the
+        // repository here keeps it polling on every tab, not just Now Playing.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                SessionServiceStarter.startWhenPlaybackSeen(this@MainActivity, container.nowPlaying.now)
+                val repo = container.nowPlaying
+                repo.acquire()
+                try {
+                    SessionServiceStarter.startWhenPlaybackSeen(this@MainActivity, repo.now)
+                } finally {
+                    repo.release()
+                }
             }
         }
     }

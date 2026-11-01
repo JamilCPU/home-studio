@@ -21,7 +21,10 @@ import com.jamilcpu.homestudio.data.api.HomeStudioApi
 import com.jamilcpu.homestudio.data.api.NowPlayingDto
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private const val MS_PER_S = 1_000.0
 private const val US_PER_S = 1_000_000.0
@@ -41,15 +44,20 @@ class RemotePlayer(
     looper: Looper = Looper.getMainLooper(),
 ) : SimpleBasePlayer(looper) {
 
-    private val mirror: Job = scope.launch { repo.now.collect { invalidateState() } }
+    private val mirror: Job = scope.launch {
+        combine(repo.now, repo.reachable) { _, _ -> }.collect { invalidateState() }
+    }
 
-    override fun getState(): State = stateFor(repo.now.value)
+    /** Player calls go to the Pi one at a time, so each sees the state the previous one left. */
+    private val calls = Mutex()
 
-    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+    override fun getState(): State = stateFor(repo.now.value, repo.reachable.value)
+
+    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> = forward {
+        // toggle flips the Pi (and starts the queue when idle), so it is only sent when the latest
+        // published state differs; checked in turn, so pause-then-play can't double-toggle wrongly.
         val playing = repo.now.value?.state == STATE_PLAYING
-        // toggle flips the Pi (and starts the queue when idle), so only send it for a real change.
-        if (playWhenReady == playing) return Futures.immediateVoidFuture()
-        return forward { api.toggle() }
+        if (playWhenReady == playing) null else api.toggle()
     }
 
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> =
@@ -70,8 +78,12 @@ class RemotePlayer(
         return Futures.immediateVoidFuture()
     }
 
-    /** The Media3 state for one /api/now answer; nothing known or idle is [Player.STATE_IDLE]. */
-    private fun stateFor(now: NowPlayingDto?): State {
+    /**
+     * The Media3 state for one /api/now answer; nothing known or idle is [Player.STATE_IDLE]. While
+     * the Pi is unreachable its last answer is stale, so the item stays shown but as idle and not
+     * playing, and the position stops moving.
+     */
+    private fun stateFor(now: NowPlayingDto?, reachable: Boolean): State {
         val builder = State.Builder().setAvailableCommands(COMMANDS)
         val item = now?.item
         if (now == null || item == null || now.state == STATE_IDLE) {
@@ -80,7 +92,7 @@ class RemotePlayer(
                 .setPlayWhenReady(false, Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE)
                 .build()
         }
-        val playing = now.state == STATE_PLAYING
+        val playing = reachable && now.state == STATE_PLAYING
         val metadata = MediaMetadata.Builder()
             .setTitle(item.title)
             .setArtist(item.channel)
@@ -98,7 +110,7 @@ class RemotePlayer(
             .build()
         val positionMs = (now.positionS * MS_PER_S).toLong()
         return builder
-            .setPlaybackState(Player.STATE_READY)
+            .setPlaybackState(if (reachable) Player.STATE_READY else Player.STATE_IDLE)
             .setPlayWhenReady(playing, Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE)
             .setPlaylist(listOf(data))
             .setCurrentMediaItemIndex(0)
@@ -106,12 +118,17 @@ class RemotePlayer(
             .build()
     }
 
-    /** Runs a player call; its answer is published at once. The future completes either way. */
-    private fun forward(call: suspend () -> ApiResult<NowPlayingDto>): ListenableFuture<*> {
+    /**
+     * Runs a player call after any earlier one; its answer is published at once. A null result
+     * means nothing needed sending. The future completes either way.
+     */
+    private fun forward(call: suspend () -> ApiResult<NowPlayingDto>?): ListenableFuture<*> {
         val done = SettableFuture.create<Unit>()
         scope.launch {
             try {
-                (call() as? ApiResult.Ok)?.let { repo.publish(it.value) }
+                calls.withLock {
+                    (call() as? ApiResult.Ok)?.let { repo.publish(it.value) }
+                }
             } finally {
                 done.set(Unit)
             }

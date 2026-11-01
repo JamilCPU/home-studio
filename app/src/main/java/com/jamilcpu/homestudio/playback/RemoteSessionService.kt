@@ -47,8 +47,8 @@ class RemoteSessionService : MediaSessionService() {
         session = built
         addSession(built)
         scope.launch {
-            stopWhenIdle(repo.now, IDLE_STOP_MS) {
-                Log.i(TAG, "Pi idle for ${IDLE_STOP_MS / 60_000} min; stopping the media session")
+            stopWhenIdle(repo.idleSignal(), IDLE_STOP_MS) {
+                Log.i(TAG, "Pi idle or unreachable for ${IDLE_STOP_MS / 60_000} min; stopping the media session")
                 stopSelf()
             }
         }
@@ -67,12 +67,21 @@ class RemoteSessionService : MediaSessionService() {
         super.onDestroy()
     }
 
-    /** Grants the 👍/👎 commands to every controller (the notification's included) and runs them. */
+    /**
+     * The service is exported, so only trusted controllers (see [QuickRate.mayRate]) get the 👍/👎
+     * commands; everyone else gets the default commands. Runs the commands it granted.
+     */
     private inner class Callback(private val quickRate: QuickRate) : MediaSession.Callback {
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
+            val trusted = QuickRate.mayRate(
+                isNotificationController = session.isMediaNotificationController(controller),
+                controllerPackage = controller.packageName,
+                ownPackage = packageName,
+            )
+            if (!trusted) return MediaSession.ConnectionResult.AcceptedResultBuilder(session).build()
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                 .add(QuickRate.LIKE)
                 .add(QuickRate.DISLIKE)

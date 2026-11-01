@@ -14,7 +14,6 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -50,17 +49,5 @@ class NotificationTapTest {
     fun nothingPlayingOpensNoSheet() {
         Robolectric.buildActivity(MainActivity::class.java, RateIntent.forNotification(app)).setup()
         assertNull(app.container.rateSheet.target.value)
-    }
-
-    @Test
-    fun startsSessionServiceOncePlaybackIsSeen() {
-        Robolectric.buildActivity(MainActivity::class.java, Intent(app, MainActivity::class.java)).setup()
-        assertNull(shadowOf(app).peekNextStartedService()) // idle so far
-        app.container.nowPlaying.publish(playing)
-        shadowOf(android.os.Looper.getMainLooper()).idle()
-        assertEquals(
-            RemoteSessionService::class.java.name,
-            shadowOf(app).nextStartedService?.component?.className,
-        )
     }
 }

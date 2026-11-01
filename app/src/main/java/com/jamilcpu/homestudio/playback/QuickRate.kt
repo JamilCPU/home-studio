@@ -31,6 +31,13 @@ class QuickRate(
         const val LIKE_ACTION = "home_studio.like"
         const val DISLIKE_ACTION = "home_studio.dislike"
 
+        /** System UI forwards the notification's buttons on Android 13+ through its own controller. */
+        const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+
+        /** Only the media notification, this app and System UI may rate. */
+        fun mayRate(isNotificationController: Boolean, controllerPackage: String, ownPackage: String): Boolean =
+            isNotificationController || controllerPackage == ownPackage || controllerPackage == SYSTEM_UI_PACKAGE
+
         val LIKE: SessionCommand = SessionCommand(LIKE_ACTION, Bundle.EMPTY)
         val DISLIKE: SessionCommand = SessionCommand(DISLIKE_ACTION, Bundle.EMPTY)
 

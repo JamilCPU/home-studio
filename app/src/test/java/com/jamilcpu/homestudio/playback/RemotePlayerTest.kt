@@ -196,4 +196,68 @@ class RemotePlayerTest {
         assertEquals("home_studio.dislike", QuickRate.DISLIKE_ACTION)
         rig.close()
     }
+
+    @Test
+    fun pauseThenPlayEndsPlaying() = runTest {
+        val rig = rig()
+        val player = rig.player
+        rig.repo.publish(dto(nowJson("playing")))
+        sync()
+
+        player.pause()
+        player.play() // before the toggle answered: checked against the state the pause left
+        awaitUntil {
+            shadowOf(Looper.getMainLooper()).idle()
+            server.calls("POST", "/api/player/toggle").size == 2
+        }
+        settle()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("playing", serverState)
+        assertEquals("playing", rig.repo.now.value?.state)
+        assertTrue(player.playWhenReady)
+
+        player.play() // already playing: nothing is sent
+        settle()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(2, server.calls("POST", "/api/player/toggle").size)
+        rig.close()
+    }
+
+    @Test
+    fun unreachablePiShowsAsNotPlaying() = runTest {
+        val rig = rig()
+        val player = rig.player
+        rig.repo.publish(dto(nowJson("playing")))
+        sync()
+        assertTrue(player.playWhenReady)
+
+        server.down = true
+        rig.repo.refresh()
+        awaitUntil {
+            shadowOf(Looper.getMainLooper()).idle()
+            !rig.repo.reachable.value
+        }
+        sync()
+        assertEquals(Player.STATE_IDLE, player.playbackState)
+        assertFalse(player.playWhenReady)
+        assertEquals("How GPUs Work", player.mediaMetadata.title.toString()) // still says what it was
+
+        server.down = false
+        rig.repo.refresh()
+        awaitUntil {
+            shadowOf(Looper.getMainLooper()).idle()
+            player.playbackState == Player.STATE_READY
+        }
+        assertTrue(player.playWhenReady)
+        rig.close()
+    }
+
+    @Test
+    fun onlyTrustedControllersMayRate() {
+        val own = "com.jamilcpu.homestudio"
+        assertTrue(QuickRate.mayRate(isNotificationController = true, controllerPackage = "android.media", ownPackage = own))
+        assertTrue(QuickRate.mayRate(isNotificationController = false, controllerPackage = own, ownPackage = own))
+        assertTrue(QuickRate.mayRate(isNotificationController = false, controllerPackage = "com.android.systemui", ownPackage = own))
+        assertFalse(QuickRate.mayRate(isNotificationController = false, controllerPackage = "com.example.other", ownPackage = own))
+    }
 }

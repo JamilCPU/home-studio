@@ -131,14 +131,30 @@ class RateViewModelTest {
     private fun entryJson(playId: Long, videoId: String, rating: String?) =
         """{"play_id":$playId,"video":{"video_id":"$videoId","title":"T","channel":null,"thumbnail_url":null,"duration_s":600,"chapters":[]},"started_at":"2026-11-01T14:03:22+00:00","seconds_listened":600.0,"end_reason":"finished","source":"agent","rating":$rating}"""
 
-    @Test
-    fun openingFromNowPlayingPrefillsExistingLike() = runTest {
+    /** As api.md says, every row of a video carries that video's latest rating. */
+    private fun historyWithLatestLike() {
+        val like = """{"liked":true,"satisfaction":7,"notes":"good one","created_at":"2026-11-01T15:00:00+00:00"}"""
         historyWith(
             entryJson(9, "other", """{"liked":false,"satisfaction":2,"notes":null,"created_at":null}"""),
-            entryJson(8, "v1", null), // the play in progress: not rated on this row
-            entryJson(5, "v1", """{"liked":true,"satisfaction":7,"notes":"good one","created_at":null}"""),
-            entryJson(2, "v1", """{"liked":false,"satisfaction":1,"notes":null,"created_at":null}"""),
+            entryJson(8, "v1", like),
+            entryJson(5, "v1", like),
+            entryJson(2, "v1", like),
         )
+    }
+
+    @Test
+    fun lookupReplacesHistorySuppliedInitial() = runTest {
+        historyWithLatestLike()
+        val vm = vm(RatingDto(liked = false, satisfaction = 2)) // an older row's view, say
+        assertEquals(false, vm.uiState.value.liked) // shown at once
+        awaitUntil { vm.uiState.value.liked == true }
+        assertEquals(7, vm.uiState.value.satisfaction)
+        assertEquals("good one", vm.uiState.value.notes)
+    }
+
+    @Test
+    fun openingFromNowPlayingPrefillsExistingLike() = runTest {
+        historyWithLatestLike()
         val vm = vm() // Now Playing knows no rating
         awaitUntil { vm.uiState.value.liked != null }
         val s = vm.uiState.value
