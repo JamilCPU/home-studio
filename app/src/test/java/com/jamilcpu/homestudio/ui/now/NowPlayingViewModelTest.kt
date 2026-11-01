@@ -11,6 +11,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -37,8 +39,15 @@ class NowPlayingViewModelTest {
     private fun nowBody(pos: Double) =
         """{"ok":true,"data":{"state":"playing","item":$item,"position_s":$pos,"duration_s":1000.0,"output_device":"Echo"},"error":null}"""
 
-    private val statusBody =
+    private var statusBody =
         """{"ok":true,"data":{"player":"playing","bluetooth":"connected","cookies":"ok","claude":"ok"},"error":null}"""
+
+    /** When set, answers every /api/player call with this position. */
+    private var playerReply: (() -> Double)? = null
+
+    /** When set, /api/now answers (with the position it saw on arrival) only after this completes. */
+    private var nowGate: CompletableDeferred<Unit>? = null
+    private val nowGateEntered = AtomicBoolean(false)
 
     private class Rig(val engine: MockEngine, val vm: NowPlayingViewModel, val repo: NowPlayingRepository) {
         fun posts(path: String): List<HttpRequestData> =
@@ -52,10 +61,17 @@ class NowPlayingViewModelTest {
     private fun TestScope.rig(position: () -> Double = { 451.7 }): Rig {
         val engine = MockEngine { request ->
             val path = request.url.encodedPath
-            val body = when (path) {
-                "/api/status" -> statusBody
-                "/api/ratings" -> """{"ok":true,"data":{"id":1},"error":null}"""
+            val body = when {
+                path == "/api/status" -> statusBody
+                path == "/api/ratings" -> """{"ok":true,"data":{"id":1},"error":null}"""
+                path.startsWith("/api/player") && playerReply != null -> nowBody(playerReply!!())
                 else -> nowBody(position())
+            }
+            if (path == "/api/now") {
+                nowGate?.let {
+                    nowGateEntered.set(true)
+                    it.await()
+                }
             }
             respond(body, headers = json)
         }
@@ -70,7 +86,7 @@ class NowPlayingViewModelTest {
     fun dragDoesNotSnapBackAndSeeksOnce() = runTest {
         var pos = 100.0
         val r = rig { pos }
-        r.repo.start()
+        r.repo.acquire()
         awaitUntil { r.vm.uiState.value.positionS == 100.0 }
         r.vm.onDragStart()
         r.vm.onDrag(400f)
@@ -90,7 +106,7 @@ class NowPlayingViewModelTest {
         assertEquals(1, r.posts("/api/player/seek").size)
         assertEquals("""{"position_s":400.0}""", r.posts("/api/player/seek").single().bodyText())
         assertNull(r.vm.uiState.value.dragPositionS)
-        r.repo.stop()
+        r.repo.release()
     }
 
     @Test
@@ -120,31 +136,61 @@ class NowPlayingViewModelTest {
     @Test
     fun openInYoutubeUriHasTimestamp() = runTest {
         val r = rig { 451.7 }
-        r.repo.start()
+        r.repo.acquire()
         awaitUntil { r.vm.uiState.value.item != null }
-        assertEquals("https://www.youtube.com/watch?v=abc123&t=451s", r.vm.openInYoutubeUri().toString())
-        r.repo.stop()
+        assertEquals("https://www.youtube.com/watch?v=abc123&t=451s", r.vm.openInYoutubeUri()?.toString())
+        r.repo.release()
     }
 
     @Test
     fun quickRateSendsLikedOnly() = runTest {
         val r = rig()
-        r.repo.start()
+        r.repo.acquire()
         awaitUntil { r.vm.uiState.value.item != null }
         r.vm.quickRate(true)
         awaitUntil { r.vm.uiState.value.quickRating == true }
         assertEquals("""{"video_id":"abc123","liked":true}""", r.posts("/api/ratings").single().bodyText())
-        r.repo.stop()
+        r.repo.release()
     }
 
     @Test
     fun currentChapterFollowsPosition() = runTest {
         val r = rig { 451.7 }
-        r.repo.start()
+        r.repo.acquire()
         awaitUntil { r.vm.uiState.value.item != null }
         assertEquals("Part 2", r.vm.uiState.value.currentChapter?.title)
         assertNotNull(r.vm.uiState.value.item)
-        r.repo.stop()
+        r.repo.release()
+    }
+
+    @Test
+    fun stalePollLandingAfterSeekDoesNotSnapBack() = runTest {
+        val r = rig { 100.0 }
+        playerReply = { 300.0 }
+        r.repo.acquire()
+        awaitUntil { r.vm.uiState.value.positionS == 100.0 }
+        val gate = CompletableDeferred<Unit>()
+        nowGate = gate
+        advanceTimeBy(1_000)
+        awaitUntil { nowGateEntered.get() }
+        r.vm.chapterTapped(300.0)
+        awaitUntil { r.vm.uiState.value.positionS == 300.0 }
+        gate.complete(Unit)
+        nowGate = null
+        settle()
+        assertEquals(300.0, r.vm.uiState.value.positionS, 0.001)
+        r.repo.release()
+    }
+
+    @Test
+    fun expiredCookiesStatusShowsNotice() = runTest {
+        statusBody =
+            """{"ok":true,"data":{"player":"idle","bluetooth":"connected","cookies":"expired","claude":"ok"},"error":null}"""
+        val r = rig()
+        r.repo.acquire()
+        awaitUntil { r.vm.uiState.value.notices.isNotEmpty() }
+        assertEquals(listOf(NOTICE_COOKIES), r.vm.uiState.value.notices)
+        r.repo.release()
     }
 
     @Test

@@ -47,7 +47,7 @@ class NowPlayingRepositoryTest {
     @Test
     fun pollsNowEverySecondAndStatusEvery15s() = runTest {
         val r = rig()
-        r.repo.start()
+        r.repo.acquire()
         awaitUntil { r.repo.now.value != null && r.repo.status.value != null }
         assertEquals(1, r.count("/api/now"))
         assertEquals(1, r.count("/api/status"))
@@ -59,30 +59,36 @@ class NowPlayingRepositoryTest {
         advanceTimeBy(1_000)
         awaitUntil { r.count("/api/status") == 2 }
         assertNotNull(r.repo.now.value)
-        r.repo.stop()
+        r.repo.release()
     }
 
     @Test
-    fun startIsIdempotentAndStopCancels() = runTest {
+    fun pollingRunsWhileAnyOwnerHoldsIt() = runTest {
         val r = rig()
-        r.repo.start()
-        r.repo.start()
+        r.repo.acquire()
+        r.repo.acquire()
         awaitUntil { r.repo.now.value != null && r.repo.status.value != null }
         settle()
         assertEquals(1, r.count("/api/now"))
-        r.repo.stop()
-        r.repo.stop()
+        r.repo.release()
+        advanceTimeBy(1_000)
+        awaitUntil { r.count("/api/now") == 2 }
+        r.repo.release()
+        r.repo.release()
         val before = r.engine.requestHistory.size
         advanceTimeBy(5_000)
         settle()
         assertEquals(before, r.engine.requestHistory.size)
+        r.repo.acquire()
+        awaitUntil { r.count("/api/now") == 3 }
+        r.repo.release()
     }
 
     @Test
     fun reachableFollowsFailuresAndRecovers() = runTest {
         var down = false
         val r = rig { down }
-        r.repo.start()
+        r.repo.acquire()
         awaitUntil { r.repo.now.value != null }
         assertTrue(r.repo.reachable.value)
         down = true
@@ -93,6 +99,6 @@ class NowPlayingRepositoryTest {
         advanceTimeBy(1_000)
         awaitUntil { r.repo.reachable.value }
         assertTrue(r.repo.reachable.value)
-        r.repo.stop()
+        r.repo.release()
     }
 }

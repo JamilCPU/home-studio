@@ -12,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -21,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import com.jamilcpu.homestudio.data.NowPlayingRepository
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
 
@@ -35,9 +35,9 @@ fun NowPlayingRoute(
     val scope = rememberCoroutineScope()
     val vm = remember(repo, api) { NowPlayingViewModel(repo, api, scope) }
     val context = LocalContext.current
-    DisposableEffect(vm) {
+    LifecycleStartEffect(vm) {
         vm.start()
-        onDispose { vm.stop() }
+        onStopOrDispose { vm.stop() }
     }
     val state by vm.uiState.collectAsState()
     val actions = remember(vm, onRate, onAskAgent) {
@@ -54,10 +54,12 @@ fun NowPlayingRoute(
             onQuickRate = vm::quickRate,
             onRate = onRate,
             onOpenYoutube = {
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, vm.openInYoutubeUri()))
-                } catch (_: ActivityNotFoundException) {
-                    // No app can open the link; nothing useful to show.
+                vm.openInYoutubeUri()?.let { uri ->
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    } catch (_: ActivityNotFoundException) {
+                        // No app can open the link; nothing useful to show.
+                    }
                 }
             },
             onAskAgent = onAskAgent,

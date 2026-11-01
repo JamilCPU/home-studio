@@ -58,9 +58,9 @@ class NowPlayingViewModel(
             )
         }.stateIn(scope, SharingStarted.Eagerly, NowPlayingUiState())
 
-    fun start() = repo.start()
+    fun start() = repo.acquire()
 
-    fun stop() = repo.stop()
+    fun stop() = repo.release()
 
     fun retry() = repo.refresh()
 
@@ -108,10 +108,10 @@ class NowPlayingViewModel(
         }
     }
 
-    /** Link to the current video at the current second. */
-    fun openInYoutubeUri(): Uri {
+    /** Link to the current video at the current second, or null when nothing is playing. */
+    fun openInYoutubeUri(): Uri? {
         val state = uiState.value
-        val id = checkNotNull(state.item) { "nothing is playing" }.videoId
+        val id = state.item?.videoId ?: return null
         val t = floor(state.displayPositionS).toLong()
         return Uri.parse("https://www.youtube.com/watch?v=$id&t=${t}s")
     }

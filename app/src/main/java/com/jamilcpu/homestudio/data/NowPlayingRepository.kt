@@ -10,11 +10,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Polls the server for what is playing and for station health while started.
+ * Polls the server for what is playing and for station health while it has at least one owner.
  *
  * Shared by the Now Playing screen and the notification service. Timing comes from [scope]'s
  * dispatcher, so tests drive it with a test dispatcher and virtual time.
@@ -35,9 +37,15 @@ class NowPlayingRepository(
     val reachable: StateFlow<Boolean> = _reachable.asStateFlow()
 
     private var job: Job? = null
+    private var owners = 0
 
-    /** Starts polling. Does nothing when already started. */
-    fun start() {
+    /** Bumped whenever a player response is published, so older in-flight polls can be discarded. */
+    private val actionEpoch = AtomicInteger(0)
+
+    /** Starts polling if this is the first owner. Every [acquire] must be paired with a [release]. */
+    @Synchronized
+    fun acquire() {
+        owners++
         if (job?.isActive == true) return
         job = scope.launch {
             launch { pollLoop(nowIntervalMs) { pollNow() } }
@@ -45,10 +53,15 @@ class NowPlayingRepository(
         }
     }
 
-    /** Stops polling. Does nothing when already stopped. */
-    fun stop() {
-        job?.cancel()
-        job = null
+    /** Stops polling when the last owner releases. Extra releases are ignored. */
+    @Synchronized
+    fun release() {
+        if (owners == 0) return
+        owners--
+        if (owners == 0) {
+            job?.cancel()
+            job = null
+        }
     }
 
     /** Fetches both now and status immediately (the banner's Retry). */
@@ -61,20 +74,27 @@ class NowPlayingRepository(
 
     /** Publishes a player response (toggle, seek, ...) without waiting for the next poll. */
     fun publish(dto: NowPlayingDto) {
+        actionEpoch.incrementAndGet()
+        apply(dto)
+    }
+
+    private fun apply(dto: NowPlayingDto) {
         _now.value = dto
         _reachable.value = true
     }
 
     private suspend fun pollLoop(intervalMs: Long, poll: suspend () -> Unit) {
-        while (scope.isActive) {
+        while (currentCoroutineContext().isActive) {
             poll()
             delay(intervalMs)
         }
     }
 
     private suspend fun pollNow() {
+        val epochAtStart = actionEpoch.get()
         when (val result = api.now()) {
-            is ApiResult.Ok -> publish(result.value)
+            // A player action completed while this poll was in flight; its data may be older.
+            is ApiResult.Ok -> if (actionEpoch.get() == epochAtStart) apply(result.value)
             is ApiResult.Failure -> noteFailure(result)
         }
     }
