@@ -12,6 +12,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -36,16 +38,23 @@ import com.jamilcpu.homestudio.ui.agent.AgentViewModel
 import com.jamilcpu.homestudio.ui.connect.ConnectScreen
 import com.jamilcpu.homestudio.ui.now.NowPlayingRoute
 import com.jamilcpu.homestudio.ui.rate.RateSheetController
+import com.jamilcpu.homestudio.ui.rate.RateSheetHost
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 private const val TAG = "HomeStudioRoot"
+private const val RATED_MESSAGE = "Rated"
 
 /** App entry: wires the real [AppContainer] into the testable overload below. */
 @Composable
 fun HomeStudioRoot(container: AppContainer) {
     val scope = rememberCoroutineScope()
-    HomeStudioRoot(container.serverUrl, container.api, nowRepo = container.nowPlaying) { url ->
+    HomeStudioRoot(
+        container.serverUrl,
+        container.api,
+        nowRepo = container.nowPlaying,
+        rateSheet = container.rateSheet,
+    ) { url ->
         scope.launch {
             try {
                 container.settings.setServerUrl(url)
@@ -70,7 +79,7 @@ fun HomeStudioRoot(
     if (url == null) {
         ConnectScreen(api = api, onSave = onSaveUrl)
     } else {
-        AppShell(api, nowRepo ?: remember(api) { NowPlayingRepository(api, scope) })
+        AppShell(api, nowRepo ?: remember(api) { NowPlayingRepository(api, scope) }, rateSheet)
     }
 }
 
@@ -79,14 +88,20 @@ fun HomeStudioRoot(
 private fun AppShell(
     api: HomeStudioApi,
     nowRepo: NowPlayingRepository,
+    rateSheet: RateSheetController,
     nav: NavHostController = rememberNavController(),
 ) {
     val scope = rememberCoroutineScope()
     // Hoisted above the NavHost so a half-typed request survives switching tabs.
     val agentVm = remember(api) { AgentViewModel(api, scope) }
+    val snackbar = remember { SnackbarHostState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
+    RateSheetHost(rateSheet, api) {
+        scope.launch { snackbar.showSnackbar(RATED_MESSAGE) }
+    }
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text(titleFor(route), modifier = Modifier.testTag("topBarTitle")) },
@@ -127,7 +142,10 @@ private fun AppShell(
                         NowPlayingRoute(
                             repo = nowRepo,
                             api = api,
-                            onRate = { /* Rate sheet arrives in Task 6. */ },
+                            onRate = { videoId ->
+                                val item = nowRepo.now.value?.item
+                                rateSheet.open(videoId, title = item?.title?.takeIf { item.videoId == videoId })
+                            },
                             onAskAgent = { nav.switchTab(Routes.AGENT) },
                         )
                     } else if (r == Routes.AGENT) {
