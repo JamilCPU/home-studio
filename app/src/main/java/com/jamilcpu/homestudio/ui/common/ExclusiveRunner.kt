@@ -14,8 +14,6 @@ class ExclusiveRunner(
 ) {
     private val busy = AtomicBoolean(false)
 
-    val isBusy: Boolean get() = busy.get()
-
     /** Returns false (and does nothing) when another action is still running. */
     fun run(block: suspend () -> Unit): Boolean {
         if (!busy.compareAndSet(false, true)) return false
