@@ -37,6 +37,8 @@ import com.jamilcpu.homestudio.ui.agent.AgentRoute
 import com.jamilcpu.homestudio.ui.agent.AgentViewModel
 import com.jamilcpu.homestudio.ui.connect.ConnectScreen
 import com.jamilcpu.homestudio.ui.now.NowPlayingRoute
+import com.jamilcpu.homestudio.ui.queue.QueueRoute
+import com.jamilcpu.homestudio.ui.queue.QueueViewModel
 import com.jamilcpu.homestudio.ui.rate.RateSheetController
 import com.jamilcpu.homestudio.ui.rate.RateSheetHost
 import kotlinx.coroutines.flow.StateFlow
@@ -94,6 +96,7 @@ private fun AppShell(
     val scope = rememberCoroutineScope()
     // Hoisted above the NavHost so a half-typed request survives switching tabs.
     val agentVm = remember(api) { AgentViewModel(api, scope) }
+    val queueVm = remember(api) { QueueViewModel(api, scope) }
     val snackbar = remember { SnackbarHostState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
@@ -136,24 +139,21 @@ private fun AppShell(
         },
     ) { padding ->
         NavHost(nav, startDestination = Routes.START, modifier = Modifier.padding(padding)) {
-            (BottomTabs.map { it.route } + Routes.MORNING).forEach { r ->
-                composable(r) {
-                    if (r == Routes.NOW) {
-                        NowPlayingRoute(
-                            repo = nowRepo,
-                            api = api,
-                            onRate = { videoId ->
-                                val item = nowRepo.now.value?.item
-                                rateSheet.open(videoId, title = item?.title?.takeIf { item.videoId == videoId })
-                            },
-                            onAskAgent = { nav.switchTab(Routes.AGENT) },
-                        )
-                    } else if (r == Routes.AGENT) {
-                        AgentRoute(agentVm)
-                    } else {
-                        PlaceholderScreen(r)
-                    }
-                }
+            composable(Routes.NOW) {
+                NowPlayingRoute(
+                    repo = nowRepo,
+                    api = api,
+                    onRate = { videoId ->
+                        val item = nowRepo.now.value?.item
+                        rateSheet.open(videoId, title = item?.title?.takeIf { item.videoId == videoId })
+                    },
+                    onAskAgent = { nav.switchTab(Routes.AGENT) },
+                )
+            }
+            composable(Routes.AGENT) { AgentRoute(agentVm) }
+            composable(Routes.QUEUE) { QueueRoute(queueVm) }
+            listOf(Routes.HISTORY, Routes.TASTE, Routes.MORNING).forEach { r ->
+                composable(r) { PlaceholderScreen(r) }
             }
         }
     }

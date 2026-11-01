@@ -28,11 +28,30 @@ data class QueueUiState(
     val search: SearchUiState? = null,
 )
 
-/** "Ends in 1h 41m, then stops". */
-fun endsInLabel(remainingS: Int): String = ""
+private const val SECONDS_PER_MINUTE = 60
+private const val MINUTES_PER_HOUR = 60
 
-/** The row tag for a queue item's `source`. */
-fun sourceLabel(source: String): String = ""
+/** "Ends in 1h 41m, then stops"; under an hour "Ends in 41m, then stops". */
+fun endsInLabel(remainingS: Int): String {
+    val minutes = remainingS.coerceAtLeast(0) / SECONDS_PER_MINUTE
+    val h = minutes / MINUTES_PER_HOUR
+    val m = minutes % MINUTES_PER_HOUR
+    val span = if (h > 0) "${h}h ${m}m" else "${m}m"
+    return "Ends in $span, then stops"
+}
+
+/** The row tag for a queue item's `source`; the fallback set is part of the morning. */
+fun sourceLabel(source: String): String = when (source) {
+    "agent" -> "Agent"
+    "user" -> "You added"
+    "morning", "fallback" -> "Morning"
+    else -> source
+}
+
+private val YOUTUBE_LINK = Regex(
+    """^(https?://)?((www|m|music)\.)?(youtube\.com/(watch\?(\S*&)?v=|shorts/)|youtu\.be/)[\w-]{6,}(\S*)$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** True for the links the server accepts: watch?v=, youtu.be/ and shorts/, with or without a scheme. */
-fun isYoutubeLink(text: String): Boolean = false
+fun isYoutubeLink(text: String): Boolean = YOUTUBE_LINK.matches(text.trim())
