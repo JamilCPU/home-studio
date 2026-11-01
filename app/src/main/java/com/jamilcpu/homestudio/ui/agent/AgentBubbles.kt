@@ -29,19 +29,19 @@ const val WORKING_TEXT = "Working… searching, reading transcripts"
 
 /** One exchange: the prompt on the right, the agent's reply on the left. */
 @Composable
-fun RequestEntry(request: AgentRequestDto, actions: AgentActions) {
+fun RequestEntry(request: AgentRequestDto, actions: AgentActions, busy: Boolean = false) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
             Bubble(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer, "prompt_${request.id}") {
                 Text(if (request.kind == KIND_MORNING) MORNING_LABEL else request.prompt)
             }
         }
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) { Reply(request, actions) }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) { Reply(request, actions, busy) }
     }
 }
 
 @Composable
-private fun Reply(request: AgentRequestDto, actions: AgentActions) {
+private fun Reply(request: AgentRequestDto, actions: AgentActions, busy: Boolean) {
     when (request.status) {
         STATUS_FAILED -> Bubble(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer, "failed_${request.id}") {
             Text(request.error ?: "Something went wrong.")
@@ -49,7 +49,7 @@ private fun Reply(request: AgentRequestDto, actions: AgentActions) {
                 Text("Try again")
             }
         }
-        STATUS_DONE -> DoneReply(request, actions)
+        STATUS_DONE -> DoneReply(request, actions, busy)
         else -> Bubble(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "working_${request.id}") {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -60,7 +60,7 @@ private fun Reply(request: AgentRequestDto, actions: AgentActions) {
 }
 
 @Composable
-private fun DoneReply(request: AgentRequestDto, actions: AgentActions) {
+private fun DoneReply(request: AgentRequestDto, actions: AgentActions, busy: Boolean) {
     Bubble(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "done_${request.id}") {
         if (request.items.isEmpty()) {
             Text(request.summary ?: "Nothing new to queue.")
@@ -72,10 +72,10 @@ private fun DoneReply(request: AgentRequestDto, actions: AgentActions) {
         request.items.forEach { Text(it.title, Modifier.padding(start = 8.dp)) }
         request.summary?.takeIf { it.isNotBlank() }?.let { Text("Why: $it", style = MaterialTheme.typography.bodySmall) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { actions.onPlayNow(request.id) }, modifier = Modifier.testTag("playNow_${request.id}")) {
+            Button(onClick = { actions.onPlayNow(request.id) }, enabled = !busy, modifier = Modifier.testTag("playNow_${request.id}")) {
                 Text("Play now")
             }
-            OutlinedButton(onClick = { actions.onAddToEnd(request.id) }, modifier = Modifier.testTag("addToEnd_${request.id}")) {
+            OutlinedButton(onClick = { actions.onAddToEnd(request.id) }, enabled = !busy, modifier = Modifier.testTag("addToEnd_${request.id}")) {
                 Text("Add to end")
             }
         }

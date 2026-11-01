@@ -6,6 +6,7 @@ import com.jamilcpu.homestudio.data.api.ApiResult
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
 import com.jamilcpu.homestudio.data.api.QueueItemDto
 import com.jamilcpu.homestudio.data.api.QueuePlacement
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -37,6 +38,7 @@ class AgentViewModel(
     val uiState: StateFlow<AgentUiState> = _uiState.asStateFlow()
 
     private var pollJob: Job? = null
+    private val busy = AtomicBoolean(false)
 
     /** Bumped whenever history changes, so an older whole-list refresh cannot overwrite newer data. */
     private val historyEpoch = AtomicInteger(0)
@@ -96,7 +98,7 @@ class AgentViewModel(
                         status = STATUS_PENDING,
                     )
                     historyEpoch.incrementAndGet()
-                    _uiState.update { it.withHistory(it.history + placeholder).copy(input = "", sending = false) }
+                    _uiState.update { it.withHistory(it.history + placeholder).copy(input = "", sending = false, unreachable = false) }
                     pollJob?.cancel()
                     pollJob = scope.launch { pollActive() }
                 }
@@ -106,24 +108,23 @@ class AgentViewModel(
         }
     }
 
-    /** Moves the request's queued videos to the front, then starts playback if nothing is playing. */
+    /**
+     * Moves the request's queued videos to the front and makes sure they are what plays: starts
+     * playback when idle, and skips whatever else is playing or paused (the label promises playback).
+     */
     fun playNow(requestId: Long) {
         val request = _uiState.value.history.firstOrNull { it.id == requestId } ?: return
-        scope.launch {
-            _uiState.update { it.copy(notice = null, error = null) }
-            val queue = when (val r = api.queue()) {
-                is ApiResult.Ok -> r.value.items.map { it.id }
-                is ApiResult.Failure -> return@launch fail(r)
-            }
+        runExclusive {
             val mine = request.items.map { it.id }.toSet()
-            val first = queue.filter { it in mine }
-            if (first.isEmpty()) return@launch notify(NOTICE_GONE)
-            val order = first + queue.filter { it !in mine }
-            val reordered = api.reorder(order)
-            if (reordered is ApiResult.Failure) return@launch fail(reordered)
+            when (val moved = moveToFront(mine)) {
+                is ApiResult.Failure -> return@runExclusive fail(moved)
+                is ApiResult.Ok -> if (!moved.value) return@runExclusive notify(NOTICE_GONE)
+            }
             when (val now = api.now()) {
-                is ApiResult.Ok -> if (now.value.state == "idle") {
-                    (api.next() as? ApiResult.Failure)?.let { fail(it) }
+                is ApiResult.Ok -> {
+                    val current = now.value.item
+                    val alreadyPlaying = now.value.state != "idle" && current != null && current.id in mine
+                    if (!alreadyPlaying) (api.next() as? ApiResult.Failure)?.let { fail(it) }
                 }
                 is ApiResult.Failure -> fail(now)
             }
@@ -133,19 +134,55 @@ class AgentViewModel(
     /** Appends the request's videos that are no longer queued; says so when nothing needed adding. */
     fun addToEnd(requestId: Long) {
         val request = _uiState.value.history.firstOrNull { it.id == requestId } ?: return
-        scope.launch {
-            _uiState.update { it.copy(notice = null, error = null) }
+        runExclusive {
             val queued = when (val r = api.queue()) {
                 is ApiResult.Ok -> r.value.items.map { it.id }.toSet()
-                is ApiResult.Failure -> return@launch fail(r)
+                is ApiResult.Failure -> return@runExclusive fail(r)
             }
             var missing = request.items.filter { it.id !in queued }
             if (missing.isNotEmpty()) {
                 val playingId = (api.now() as? ApiResult.Ok)?.value?.item?.id
                 missing = missing.filter { it.id != playingId }
             }
-            if (missing.isEmpty()) return@launch notify(NOTICE_ALREADY_QUEUED)
+            if (missing.isEmpty()) return@runExclusive notify(NOTICE_ALREADY_QUEUED)
             enqueueAll(missing)
+        }
+    }
+
+    /** Runs one queue action at a time; taps while one is running are ignored. */
+    private fun runExclusive(block: suspend () -> Unit) {
+        if (!busy.compareAndSet(false, true)) return
+        _uiState.update { it.copy(busy = true, notice = null, error = null) }
+        scope.launch {
+            try {
+                block()
+            } finally {
+                busy.set(false)
+                _uiState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    /**
+     * Puts the request's videos first in the queue. Ok(false) means none of them is queued any more.
+     * If the server rejects the order (the queue changed between our read and write) it re-reads once.
+     */
+    private suspend fun moveToFront(mine: Set<Long>): ApiResult<Boolean> {
+        var retried = false
+        while (true) {
+            val queue = when (val r = api.queue()) {
+                is ApiResult.Ok -> r.value.items.map { it.id }
+                is ApiResult.Failure -> return r
+            }
+            val first = queue.filter { it in mine }
+            if (first.isEmpty()) return ApiResult.Ok(false)
+            when (val r = api.reorder(first + queue.filter { it !in mine })) {
+                is ApiResult.Ok -> return ApiResult.Ok(true)
+                is ApiResult.Failure -> {
+                    if (retried || r.kind == ApiResult.Failure.Kind.Unreachable) return r
+                    retried = true
+                }
+            }
         }
     }
 
@@ -159,14 +196,20 @@ class AgentViewModel(
 
     private fun notify(message: String) = _uiState.update { it.copy(notice = message) }
 
-    private fun fail(failure: ApiResult.Failure) = _uiState.update { it.copy(error = failure.message) }
+    private fun fail(failure: ApiResult.Failure) = _uiState.update {
+        if (failure.kind == ApiResult.Failure.Kind.Unreachable) {
+            it.copy(unreachable = true, error = null)
+        } else {
+            it.copy(error = failure.message)
+        }
+    }
 
     private suspend fun refreshHistory() {
         val epochAtStart = historyEpoch.get()
         when (val r = api.agentRequests(HISTORY_LIMIT)) {
             is ApiResult.Ok -> if (historyEpoch.get() == epochAtStart) {
                 historyEpoch.incrementAndGet()
-                _uiState.update { it.withHistory(r.value.requests.reversed()).copy(error = null) }
+                _uiState.update { it.withHistory(r.value.requests.reversed()).copy(error = null, unreachable = false) }
             }
             is ApiResult.Failure -> fail(r)
         }
@@ -181,7 +224,7 @@ class AgentViewModel(
                 is ApiResult.Ok -> {
                     failures = 0
                     historyEpoch.incrementAndGet()
-                    _uiState.update { state -> state.withHistory(state.history.replacing(r.value)) }
+                    _uiState.update { state -> state.withHistory(state.history.replacing(r.value)).copy(unreachable = false) }
                 }
                 is ApiResult.Failure -> if (++failures >= MAX_POLL_FAILURES) return fail(r)
             }

@@ -7,6 +7,7 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,9 +36,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
+import com.jamilcpu.homestudio.ui.common.UnreachableBanner
 
 private val CHIPS = listOf(
     "Podcast on…" to "Podcast on ",
@@ -56,6 +60,7 @@ data class AgentActions(
     val onRetry: (Long) -> Unit = {},
     val onDismiss: () -> Unit = {},
     val onMic: () -> Unit = {},
+    val onReconnect: () -> Unit = {},
 )
 
 /** Stateful entry used by the nav graph: binds polling to the lifecycle and wires dictation. */
@@ -90,6 +95,7 @@ fun AgentRoute(vm: AgentViewModel) {
             onAddToEnd = vm::addToEnd,
             onRetry = vm::retry,
             onDismiss = vm::dismissMessages,
+            onReconnect = vm::start,
             onMic = {
                 try {
                     launcher.launch(speechIntent)
@@ -117,7 +123,10 @@ fun AgentScreen(state: AgentUiState, actions: AgentActions, micAvailable: Boolea
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(state.history, key = { it.id }) { RequestEntry(it, actions) }
+            items(state.history, key = { it.id }) { RequestEntry(it, actions, state.busy) }
+        }
+        if (state.unreachable) {
+            Box(Modifier.padding(horizontal = 16.dp)) { UnreachableBanner(actions.onReconnect) }
         }
         Messages(state, actions)
         InputBar(state, actions, micAvailable)
@@ -172,7 +181,7 @@ private fun InputBar(state: AgentUiState, actions: AgentActions, micAvailable: B
             )
             if (micAvailable) {
                 IconButton(onClick = actions.onMic, modifier = Modifier.testTag("micButton")) {
-                    Text("🎤")
+                    Text("🎤", modifier = Modifier.semantics { contentDescription = "Dictate request" })
                 }
             }
             IconButton(onClick = actions.onSend, enabled = state.canSend, modifier = Modifier.testTag("sendButton")) {

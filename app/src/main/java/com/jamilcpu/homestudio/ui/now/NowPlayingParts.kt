@@ -34,37 +34,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.jamilcpu.homestudio.data.api.ChapterDto
+import com.jamilcpu.homestudio.ui.common.NoticeCard
 import com.jamilcpu.homestudio.data.api.QueueItemDto
 
 private val ART_SHAPE = RoundedCornerShape(12.dp)
 private const val ART_ASPECT = 16f / 9f
 
 @Composable
-fun UnreachableBanner(onRetry: () -> Unit) {
-    NoticeCard(MaterialTheme.colorScheme.errorContainer, "bannerUnreachable") {
-        Text("Can't reach your Pi", Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer)
-        TextButton(onClick = onRetry) { Text("Retry") }
-    }
-}
-
-@Composable
 fun NoticeLine(text: String) {
     NoticeCard(MaterialTheme.colorScheme.tertiaryContainer, "notice") {
         Text(text, Modifier.weight(1f), color = MaterialTheme.colorScheme.onTertiaryContainer)
-    }
-}
-
-@Composable
-private fun NoticeCard(container: Color, tag: String, content: @Composable RowScope.() -> Unit) {
-    Card(
-        Modifier.fillMaxWidth().testTag(tag),
-        colors = CardDefaults.cardColors(containerColor = container),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
     }
 }
 

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import com.jamilcpu.homestudio.data.NowPlayingRepository
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
+import com.jamilcpu.homestudio.ui.common.UnreachableBanner
 
 /** Stateful entry used by the nav graph: owns the view model and the polling lifecycle. */
 @Composable

@@ -7,9 +7,12 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpHeaders
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import java.net.ConnectException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -45,6 +48,9 @@ class AgentViewModelTest {
     private var queueIds: List<Long> = emptyList()
     private var nowState = "playing"
     private var nowItemId = 0L
+    private var reorderFailures = 0
+    private var down = false
+    private var queueGate: CompletableDeferred<Unit>? = null
 
     private class Rig(val engine: MockEngine, val vm: AgentViewModel) {
         fun calls(method: String, path: String): List<HttpRequestData> =
@@ -57,6 +63,16 @@ class AgentViewModelTest {
         val engine = MockEngine { request ->
             val path = request.url.encodedPath
             val method = request.method.value
+            if (down) throw ConnectException("refused")
+            if (path == "/api/queue" && method == "GET") queueGate?.await()
+            if (path == "/api/queue/order" && reorderFailures > 0) {
+                reorderFailures--
+                return@MockEngine respond(
+                    """{"ok":false,"data":null,"error":"ids do not match"}""",
+                    HttpStatusCode.UnprocessableEntity,
+                    json,
+                )
+            }
             val body = when {
                 method == "POST" && path == "/api/agent/requests" -> env("""{"id":9}""")
                 path == "/api/agent/requests" -> env("""{"requests":[${list.joinToString(",")}]}""")
@@ -202,16 +218,120 @@ class AgentViewModelTest {
     }
 
     @Test
-    fun playNowDoesNotSkipWhilePlaying() = runTest {
+    fun playNowSkipsAnotherTrackThatIsPlaying() = runTest {
         list = listOf(req(8, "done", items = listOf(11)))
         queueIds = listOf(10, 11)
+        nowItemId = 50
         val r = rig()
         r.vm.start()
         awaitUntil { r.vm.uiState.value.history.isNotEmpty() }
         r.vm.playNow(8)
-        awaitUntil { r.calls("PUT", "/api/queue/order").isNotEmpty() }
-        settle()
+        awaitUntil { r.calls("POST", "/api/player/next").isNotEmpty() }
+        assertEquals("""{"ids":[11,10]}""", r.calls("PUT", "/api/queue/order").single().bodyText())
+    }
+
+    @Test
+    fun playNowLeavesPlaybackAloneWhenCurrentTrackIsTheRequests() = runTest {
+        list = listOf(req(8, "done", items = listOf(11)))
+        queueIds = listOf(10, 11)
+        nowItemId = 11
+        val r = rig()
+        r.vm.start()
+        awaitUntil { r.vm.uiState.value.history.isNotEmpty() }
+        r.vm.playNow(8)
+        awaitUntil { r.calls("PUT", "/api/queue/order").isNotEmpty() && !r.vm.uiState.value.busy }
         assertTrue(r.calls("POST", "/api/player/next").isEmpty())
+    }
+
+    @Test
+    fun playNowRetriesOnceWhenTheOrderIsRejected() = runTest {
+        list = listOf(req(8, "done", items = listOf(11)))
+        queueIds = listOf(10, 11)
+        nowState = "idle"
+        reorderFailures = 1
+        val r = rig()
+        r.vm.start()
+        awaitUntil { r.vm.uiState.value.history.isNotEmpty() }
+        r.vm.playNow(8)
+        awaitUntil { r.calls("POST", "/api/player/next").isNotEmpty() }
+        assertEquals(2, r.calls("PUT", "/api/queue/order").size)
+        assertEquals(2, r.calls("GET", "/api/queue").size)
+        assertNull(r.vm.uiState.value.error)
+    }
+
+    @Test
+    fun playNowShowsErrorWhenTheRetryAlsoFails() = runTest {
+        list = listOf(req(8, "done", items = listOf(11)))
+        queueIds = listOf(10, 11)
+        reorderFailures = 5
+        val r = rig()
+        r.vm.start()
+        awaitUntil { r.vm.uiState.value.history.isNotEmpty() }
+        r.vm.playNow(8)
+        awaitUntil { r.vm.uiState.value.error != null }
+        assertEquals(2, r.calls("PUT", "/api/queue/order").size)
+        assertTrue(r.calls("POST", "/api/player/next").isEmpty())
+    }
+
+    @Test
+    fun doubleTapRunsOneSequence() = runTest {
+        list = listOf(req(8, "done", items = listOf(11)))
+        queueIds = listOf(10, 11)
+        nowState = "idle"
+        val r = rig()
+        r.vm.start()
+        awaitUntil { r.vm.uiState.value.history.isNotEmpty() }
+        val gate = CompletableDeferred<Unit>()
+        queueGate = gate
+        r.vm.playNow(8)
+        awaitUntil { r.vm.uiState.value.busy }
+        r.vm.playNow(8)
+        r.vm.addToEnd(8)
+        gate.complete(Unit)
+        awaitUntil { r.calls("POST", "/api/player/next").isNotEmpty() && !r.vm.uiState.value.busy }
+        settle()
+        assertEquals(1, r.calls("PUT", "/api/queue/order").size)
+        assertEquals(1, r.calls("GET", "/api/queue").size)
+        assertEquals(1, r.calls("POST", "/api/player/next").size)
+    }
+
+    @Test
+    fun unreachableRefreshShowsBannerAndRetryRecovers() = runTest {
+        list = listOf(req(4, "running"))
+        var done = false
+        byId[4] = { if (done) req(4, "done", items = listOf(5)) else req(4, "running") }
+        down = true
+        val r = rig()
+        r.vm.start()
+        awaitUntil { r.vm.uiState.value.unreachable }
+        assertNull(r.vm.uiState.value.error)
+        assertTrue(r.vm.uiState.value.history.isEmpty())
+        down = false
+        done = true
+        r.vm.start() // what the banner's Retry calls
+        awaitUntil { r.vm.uiState.value.history.singleOrNull()?.status == "done" }
+        assertTrue(!r.vm.uiState.value.unreachable)
+        assertNull(r.vm.uiState.value.active)
+    }
+
+    @Test
+    fun retryResumesPollingAfterPollFailuresGaveUp() = runTest {
+        list = listOf(req(4, "running"))
+        var done = false
+        byId[4] = { if (done) req(4, "done") else req(4, "running") }
+        val r = rig()
+        r.vm.start()
+        awaitUntil { r.vm.uiState.value.active?.id == 4L }
+        down = true
+        repeat(6) {
+            advanceTimeBy(2_000)
+            settle()
+        }
+        awaitUntil { r.vm.uiState.value.unreachable }
+        down = false
+        done = true
+        r.vm.start()
+        awaitUntil { r.vm.uiState.value.history.single().status == "done" }
     }
 
     @Test

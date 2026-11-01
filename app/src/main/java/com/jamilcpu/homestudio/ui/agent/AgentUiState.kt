@@ -29,6 +29,10 @@ data class AgentUiState(
     val active: AgentRequestDto? = null,
     val notice: String? = null,
     val error: String? = null,
+    /** The last call could not reach the Pi; the screen shows the shared banner with Retry. */
+    val unreachable: Boolean = false,
+    /** A Play now / Add to end is running; their buttons are disabled. */
+    val busy: Boolean = false,
 ) {
     val canSend: Boolean get() = input.isNotBlank() && !sending
 }

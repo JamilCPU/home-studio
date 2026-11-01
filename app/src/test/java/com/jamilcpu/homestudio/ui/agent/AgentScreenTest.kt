@@ -1,5 +1,7 @@
 package com.jamilcpu.homestudio.ui.agent
 
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -94,5 +96,22 @@ class AgentScreenTest {
         rule.onNodeWithText("Ask for something to play…").assertExists()
         rule.onNodeWithText("Classical playlist").performClick()
         assertEquals(listOf("Classical playlist"), chips)
+    }
+
+    @Test
+    fun unreachableShowsBannerWithRetry() {
+        var retries = 0
+        show(AgentUiState(unreachable = true), AgentActions(onReconnect = { retries++ }))
+        rule.onNodeWithText("Can't reach your Pi").assertExists()
+        rule.onNodeWithText("Retry").performClick()
+        assertEquals(1, retries)
+    }
+
+    @Test
+    fun busyDisablesPlayButtonsAndMicIsLabelled() {
+        show(AgentUiState(history = listOf(request(1, "done", items = listOf(item))), busy = true))
+        rule.onNodeWithTag("playNow_1").assertIsNotEnabled()
+        rule.onNodeWithTag("addToEnd_1").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Dictate request").assertExists()
     }
 }
