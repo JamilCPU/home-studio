@@ -6,7 +6,7 @@ import com.jamilcpu.homestudio.data.api.ApiResult
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
 import com.jamilcpu.homestudio.data.api.QueueItemDto
 import com.jamilcpu.homestudio.data.api.QueuePlacement
-import java.util.concurrent.atomic.AtomicBoolean
+import com.jamilcpu.homestudio.ui.common.ExclusiveRunner
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -38,7 +38,9 @@ class AgentViewModel(
     val uiState: StateFlow<AgentUiState> = _uiState.asStateFlow()
 
     private var pollJob: Job? = null
-    private val busy = AtomicBoolean(false)
+    private val exclusive = ExclusiveRunner(scope) { busy ->
+        _uiState.update { if (busy) it.copy(busy = true, notice = null, error = null) else it.copy(busy = false) }
+    }
 
     /** Bumped whenever history changes, so an older whole-list refresh cannot overwrite newer data. */
     private val historyEpoch = AtomicInteger(0)
@@ -151,16 +153,7 @@ class AgentViewModel(
 
     /** Runs one queue action at a time; taps while one is running are ignored. */
     private fun runExclusive(block: suspend () -> Unit) {
-        if (!busy.compareAndSet(false, true)) return
-        _uiState.update { it.copy(busy = true, notice = null, error = null) }
-        scope.launch {
-            try {
-                block()
-            } finally {
-                busy.set(false)
-                _uiState.update { it.copy(busy = false) }
-            }
-        }
+        exclusive.run(block)
     }
 
     /**

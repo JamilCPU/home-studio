@@ -35,6 +35,7 @@ import com.jamilcpu.homestudio.ui.agent.AgentRoute
 import com.jamilcpu.homestudio.ui.agent.AgentViewModel
 import com.jamilcpu.homestudio.ui.connect.ConnectScreen
 import com.jamilcpu.homestudio.ui.now.NowPlayingRoute
+import com.jamilcpu.homestudio.ui.rate.RateSheetController
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -61,6 +62,7 @@ fun HomeStudioRoot(
     serverUrl: StateFlow<String?>,
     api: HomeStudioApi,
     nowRepo: NowPlayingRepository? = null,
+    rateSheet: RateSheetController = remember { RateSheetController() },
     onSaveUrl: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
