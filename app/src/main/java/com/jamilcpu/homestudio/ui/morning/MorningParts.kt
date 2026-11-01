@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /** Monday first, matching the API's 0 = Monday … 6 = Sunday. */
@@ -63,13 +64,14 @@ internal fun Stepper(label: String, value: Int, unit: String, range: IntRange, t
 
 @Composable
 internal fun DayToggles(days: List<Int>, onToggle: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    // Equal widths so all seven fit on a narrow phone.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         DAY_LETTERS.forEachIndexed { day, letter ->
             FilterChip(
                 selected = day in days,
                 onClick = { onToggle(day) },
-                label = { Text(letter) },
-                modifier = Modifier.testTag("day_$day").semantics { contentDescription = DAY_NAMES[day] },
+                label = { Text(letter, Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                modifier = Modifier.weight(1f).testTag("day_$day").semantics { contentDescription = DAY_NAMES[day] },
             )
         }
     }

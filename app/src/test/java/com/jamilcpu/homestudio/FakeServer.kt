@@ -11,6 +11,7 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import java.net.ConnectException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** A scripted reply: HTTP status plus the raw response text. */
 data class Reply(val status: Int, val text: String)
@@ -25,7 +26,11 @@ class FakeServer {
 
     private val routes = ConcurrentHashMap<String, (HttpRequestData) -> Reply>()
 
+    /** Every request, safe to read while polling adds more (MockEngine's own history is not). */
+    private val received = CopyOnWriteArrayList<HttpRequestData>()
+
     val engine = MockEngine { request ->
+        received += request
         if (down) throw ConnectException("refused")
         val handler = routes["${request.method.value} ${request.url.encodedPath}"]
         val reply = handler?.invoke(request) ?: Reply(404, err("not found"))
@@ -44,7 +49,7 @@ class FakeServer {
     }
 
     fun calls(method: String, path: String): List<HttpRequestData> =
-        engine.requestHistory.filter { it.method.value == method && it.url.encodedPath == path }
+        received.filter { it.method.value == method && it.url.encodedPath == path }
 
     companion object {
         private val JSON_HEADERS = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
