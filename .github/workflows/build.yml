@@ -24,8 +24,33 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Run unit tests
+        run: chmod +x gradlew && ./gradlew testDebugUnitTest
+
       - name: Build debug APK
-        run: chmod +x gradlew && ./gradlew assembleDebug
+        run: ./gradlew assembleDebug
+
+      # Optional: only runs when all four signing secrets exist in the repo.
+      - name: Build signed release APK
+        id: release
+        env:
+          KEYSTORE_B64: ${{ secrets.HOME_STUDIO_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.HOME_STUDIO_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.HOME_STUDIO_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.HOME_STUDIO_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Signing secrets not set; skipping release build."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/home-studio.jks"
+          ./gradlew assembleRelease \
+            -PHOME_STUDIO_STORE_FILE="$RUNNER_TEMP/home-studio.jks" \
+            -PHOME_STUDIO_STORE_PASSWORD="$STORE_PASSWORD" \
+            -PHOME_STUDIO_KEY_ALIAS="$KEY_ALIAS" \
+            -PHOME_STUDIO_KEY_PASSWORD="$KEY_PASSWORD"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Get version name
         id: version
@@ -33,19 +58,26 @@ jobs:
           VERSION=$(grep 'versionName' app/build.gradle.kts | head -1 | grep -oP '"[^"]*"' | tr -d '"')
           echo "name=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/AlarmAPI-debug.apk
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/HomeStudio-debug.apk
+          if [ "${{ steps.release.outputs.signed }}" = "true" ]; then
+            cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/HomeStudio-release.apk
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.name }}-build${{ github.run_number }}
-          name: AlarmAPI v${{ steps.version.outputs.name }} (build ${{ github.run_number }})
+          name: Home Studio v${{ steps.version.outputs.name }} (build ${{ github.run_number }})
           body: |
             Automated build from commit ${{ github.sha }}.
 
-            Install: download `AlarmAPI-debug.apk` below and open on your Android device.
-          files: app/build/outputs/apk/debug/AlarmAPI-debug.apk
+            Debug APK only unless signing secrets are configured. For day-to-day installs
+            use the locally signed release APK (see docs/INSTALL.md).
+          files: |
+            app/build/outputs/apk/debug/HomeStudio-debug.apk
+            app/build/outputs/apk/release/HomeStudio-release.apk
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,5 +85,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AlarmAPI-debug
-          path: app/build/outputs/apk/debug/AlarmAPI-debug.apk
+          name: HomeStudio-debug
+          path: app/build/outputs/apk/debug/HomeStudio-debug.apk

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app only talks to the single server URL the user enters (a LAN address
+     or a Tailscale name), so cleartext HTTP is permitted. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

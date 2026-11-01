@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AlarmAPI"
+rootProject.name = "home-studio"
 include(":app")

@@ -2,30 +2,53 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
-    id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Release signing reads four Gradle properties (set in ~/.gradle/gradle.properties,
+// never in the repo). When they are absent the release build falls back to the
+// debug key so CI can still build.
+val storeFileProp = providers.gradleProperty("HOME_STUDIO_STORE_FILE").orNull
+val storePasswordProp = providers.gradleProperty("HOME_STUDIO_STORE_PASSWORD").orNull
+val keyAliasProp = providers.gradleProperty("HOME_STUDIO_KEY_ALIAS").orNull
+val keyPasswordProp = providers.gradleProperty("HOME_STUDIO_KEY_PASSWORD").orNull
+val hasReleaseKey = listOf(storeFileProp, storePasswordProp, keyAliasProp, keyPasswordProp)
+    .all { !it.isNullOrBlank() }
+
 android {
-    namespace = "com.brainwash.alarm"
+    namespace = "com.jamilcpu.homestudio"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.brainwash.alarm"
+        applicationId = "com.jamilcpu.homestudio"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(storeFileProp!!)
+                storePassword = storePasswordProp
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("WARNING: HOME_STUDIO_* signing properties not set; signing release with the debug key.")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -39,7 +62,13 @@ android {
     }
 
     buildFeatures {
-        viewBinding = true
+        compose = true
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
     }
 
     packaging {
@@ -47,7 +76,9 @@ android {
             excludes += setOf(
                 "META-INF/INDEX.LIST",
                 "META-INF/io.netty.versions.properties",
-                "META-INF/DEPENDENCIES"
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*"
             )
         }
     }
@@ -56,37 +87,40 @@ android {
 dependencies {
     // Android core
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+    implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-    implementation("androidx.recyclerview:recyclerview:1.4.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // Embedded HTTP server (lightweight, no external deps)
-    implementation("io.ktor:ktor-server-core:3.1.1")
-    implementation("io.ktor:ktor-server-netty:3.1.1")
-    implementation("io.ktor:ktor-server-content-negotiation:3.1.1")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
+    // Compose
+    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    // HTTP client (for calling YoutubeBrainwash API)
+    // Images and media
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.media3:media3-session:1.5.0")
+
+    // HTTP client (Home Studio server API)
     implementation("io.ktor:ktor-client-core:3.1.1")
     implementation("io.ktor:ktor-client-okhttp:3.1.1")
     implementation("io.ktor:ktor-client-content-negotiation:3.1.1")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
 
-    // Kotlin serialization
+    // Kotlin serialization and coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-
-    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // Room (local alarm database)
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
-
-    // Testing
+    // Testing (JVM; Compose UI tests run under Robolectric)
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("io.ktor:ktor-client-mock:3.1.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
 }
