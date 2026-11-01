@@ -43,6 +43,8 @@ import com.jamilcpu.homestudio.ui.queue.QueueRoute
 import com.jamilcpu.homestudio.ui.queue.QueueViewModel
 import com.jamilcpu.homestudio.ui.rate.RateSheetController
 import com.jamilcpu.homestudio.ui.rate.RateSheetHost
+import com.jamilcpu.homestudio.ui.taste.TasteRoute
+import com.jamilcpu.homestudio.ui.taste.TasteViewModel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -100,6 +102,7 @@ private fun AppShell(
     val agentVm = remember(api) { AgentViewModel(api, scope) }
     val queueVm = remember(api) { QueueViewModel(api, scope) }
     val historyVm = remember(api) { HistoryViewModel(api, scope) }
+    val tasteVm = remember(api) { TasteViewModel(api, scope) }
     val snackbar = remember { SnackbarHostState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
@@ -157,9 +160,8 @@ private fun AppShell(
             composable(Routes.AGENT) { AgentRoute(agentVm) }
             composable(Routes.QUEUE) { QueueRoute(queueVm) }
             composable(Routes.HISTORY) { HistoryRoute(historyVm, rateSheet) }
-            listOf(Routes.TASTE, Routes.MORNING).forEach { r ->
-                composable(r) { PlaceholderScreen(r) }
-            }
+            composable(Routes.TASTE) { TasteRoute(tasteVm) }
+            composable(Routes.MORNING) { PlaceholderScreen(Routes.MORNING) }
         }
     }
 }
