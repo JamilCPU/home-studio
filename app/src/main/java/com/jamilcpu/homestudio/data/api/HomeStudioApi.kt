@@ -1,5 +1,6 @@
 package com.jamilcpu.homestudio.data.api
 
+import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
@@ -39,6 +40,9 @@ sealed interface ApiResult<out T> {
 
 /** Where a queued video goes. */
 enum class QueuePlacement(val wire: String) { Next("next"), End("end") }
+
+/** Which side of the taste profile a trait belongs to. */
+enum class TraitKind(val wire: String) { Likes("likes"), Dislikes("dislikes") }
 
 /** How the agent's picks are played. */
 enum class AgentPlay(val wire: String) { Now("now"), End("end") }
@@ -129,9 +133,8 @@ class HomeStudioApi(
     suspend fun correctTaste(text: String): ApiResult<IdDto> =
         call(HttpMethod.Post, "/api/taste/corrections", body = encode(CorrectionBody(text)))
 
-    /** [kind] is "likes" or "dislikes". */
-    suspend fun removeTrait(kind: String, text: String): ApiResult<TasteDto> =
-        call(HttpMethod.Delete, "/api/taste/traits", body = encode(TraitBody(kind, text)))
+    suspend fun removeTrait(kind: TraitKind, text: String): ApiResult<TasteDto> =
+        call(HttpMethod.Delete, "/api/taste/traits", body = encode(TraitBody(kind.wire, text)))
 
     // ---- Agent ----
 
@@ -170,6 +173,10 @@ class HomeStudioApi(
 
     suspend fun status(): ApiResult<StatusDto> = call(HttpMethod.Get, "/api/status")
 
+    /** Like [status] but against an explicit [url], for testing an address before it is saved. */
+    suspend fun statusAt(url: String): ApiResult<StatusDto> =
+        call(HttpMethod.Get, "/api/status", baseOverride = url)
+
     // ---- Plumbing ----
 
     private inline fun <reified B> encode(body: B): String = HomeStudioJson.encodeToString(body)
@@ -179,8 +186,9 @@ class HomeStudioApi(
         path: String,
         query: List<Pair<String, Any>> = emptyList(),
         body: String? = null,
+        baseOverride: String? = null,
     ): ApiResult<T> {
-        val base = baseUrl()?.trim()?.trimEnd('/')
+        val base = (baseOverride ?: baseUrl())?.trim()?.trimEnd('/')
         if (base.isNullOrEmpty()) {
             return ApiResult.Failure(MESSAGE_NO_SERVER, ApiResult.Failure.Kind.Unreachable)
         }
@@ -192,6 +200,7 @@ class HomeStudioApi(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            Log.w(TAG, "Request $method $path failed", e)
             return ApiResult.Failure(MESSAGE_UNREACHABLE, ApiResult.Failure.Kind.Unreachable)
         }
         return parse(status, text)
@@ -223,6 +232,7 @@ class HomeStudioApi(
     private fun unexpected() = ApiResult.Failure(MESSAGE_UNEXPECTED, ApiResult.Failure.Kind.Server)
 
     private companion object {
+        const val TAG = "HomeStudioApi"
         const val CONNECT_TIMEOUT_MS = 5_000L
         const val REQUEST_TIMEOUT_MS = 10_000L
         const val HTTP_UNPROCESSABLE = 422

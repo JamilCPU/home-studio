@@ -29,28 +29,37 @@ class Settings(private val store: DataStore<Preferences>) {
      * @throws IllegalArgumentException when it is not an http:// or https:// URL with a host.
      */
     suspend fun setServerUrl(url: String) {
-        val normalized = normalizeServerUrl(url)
-            ?: throw IllegalArgumentException(INVALID_URL_MESSAGE)
+        serverUrlError(url)?.let { throw IllegalArgumentException(it) }
+        val normalized = checkNotNull(normalizeServerUrl(url))
         store.edit { it[SERVER_URL_KEY] = normalized }
     }
 
     companion object {
         const val INVALID_URL_MESSAGE =
             "Enter the full address, starting with http:// or https://"
+        const val PATH_NOT_ALLOWED_MESSAGE =
+            "Enter just the address, like http://192.168.x.x:8765"
 
         private val SERVER_URL_KEY = stringPreferencesKey("server_url")
 
         /** Returns the cleaned URL, or null when it is not a usable http(s) address. */
-        fun normalizeServerUrl(raw: String): String? {
+        fun normalizeServerUrl(raw: String): String? =
+            if (serverUrlError(raw) == null) raw.trim().trimEnd('/') else null
+
+        /** A user-facing reason [raw] cannot be used as the server address, or null when it can. */
+        fun serverUrlError(raw: String): String? {
             val trimmed = raw.trim().trimEnd('/')
             val lower = trimmed.lowercase()
-            if (!lower.startsWith("http://") && !lower.startsWith("https://")) return null
-            val host = try {
-                URI(trimmed).host
+            if (!lower.startsWith("http://") && !lower.startsWith("https://")) return INVALID_URL_MESSAGE
+            val uri = try {
+                URI(trimmed)
             } catch (e: URISyntaxException) {
-                null
+                return INVALID_URL_MESSAGE
             }
-            return if (host.isNullOrBlank()) null else trimmed
+            if (uri.host.isNullOrBlank()) return INVALID_URL_MESSAGE
+            val hasPath = !uri.rawPath.isNullOrEmpty()
+            if (hasPath || uri.rawQuery != null || uri.rawFragment != null) return PATH_NOT_ALLOWED_MESSAGE
+            return null
         }
     }
 }

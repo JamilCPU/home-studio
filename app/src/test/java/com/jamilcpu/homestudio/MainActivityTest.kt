@@ -15,7 +15,7 @@ class MainActivityTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun showsAppName() {
-        composeRule.onNodeWithText("Home Studio").assertExists()
+    fun showsConnectScreenOnFirstRun() {
+        composeRule.onNodeWithText("Connect to your Pi").assertExists()
     }
 }

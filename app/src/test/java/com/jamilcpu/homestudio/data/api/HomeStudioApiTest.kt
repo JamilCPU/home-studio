@@ -355,7 +355,7 @@ class HomeStudioApiTest {
         val f = fixture {
             json(ok("""{"summary":"S","likes":[],"dislikes":["b"],"updated_at":"2026-11-01T15:00:00+00:00"}"""))
         }
-        f.api.removeTrait("likes", "hardware teardowns")
+        f.api.removeTrait(TraitKind.Likes, "hardware teardowns")
         assertEquals(HttpMethod.Delete to "/api/taste/traits", f.last.method to f.last.fullPath())
         assertEquals("""{"kind":"likes","text":"hardware teardowns"}""", f.last.bodyText())
     }

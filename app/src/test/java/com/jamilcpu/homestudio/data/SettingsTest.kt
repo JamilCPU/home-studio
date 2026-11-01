@@ -78,4 +78,26 @@ class SettingsTest {
         assertEquals("http://a.b:1", Settings.normalizeServerUrl("http://a.b:1/"))
         assertNull(Settings.normalizeServerUrl("gopher://a.b"))
     }
+
+    @Test
+    fun rejectsPathQueryAndFragment() = runTest {
+        val s = settings()
+        s.setExpectingRejection("http://pi:8765/api")
+        s.setExpectingRejection("http://pi:8765/?x=1")
+        s.setExpectingRejection("http://pi:8765/#frag")
+        assertNull(s.serverUrl.first())
+        assertNull(Settings.normalizeServerUrl("http://pi:8765/api"))
+        assertEquals(Settings.PATH_NOT_ALLOWED_MESSAGE, Settings.serverUrlError("http://pi:8765/api"))
+        assertEquals(Settings.PATH_NOT_ALLOWED_MESSAGE, Settings.serverUrlError("http://pi:8765/?x=1"))
+        assertEquals(Settings.INVALID_URL_MESSAGE, Settings.serverUrlError("pi:8765"))
+        assertNull(Settings.serverUrlError("http://pi:8765"))
+    }
+
+    @Test
+    fun acceptsBareTrailingSlash() = runTest {
+        val s = settings()
+        s.setServerUrl("http://pi:8765/")
+        assertEquals("http://pi:8765", s.serverUrl.first())
+        assertEquals("Enter just the address, like http://192.168.x.x:8765", Settings.PATH_NOT_ALLOWED_MESSAGE)
+    }
 }
