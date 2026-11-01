@@ -24,10 +24,14 @@ data class MorningUiState(
     val notice: String? = null,
     val unreachable: Boolean = false,
 ) {
-    val dirty: Boolean get() = draft != null && draft != saved
+    /** Only the editable fields count: next_build_at and last_outcome move on the server's own. */
+    val dirty: Boolean get() = draft != null && draft.editable() != saved?.editable()
 
     val canSave: Boolean get() = dirty && !saving
 }
+
+/** [MorningDto] without its read-only fields, for comparing edits. */
+private fun MorningDto.editable(): MorningDto = copy(nextBuildAt = null, lastOutcome = null)
 
 private const val MINUTES_PER_DAY = 24 * 60
 private const val MINUTES_PER_HOUR = 60

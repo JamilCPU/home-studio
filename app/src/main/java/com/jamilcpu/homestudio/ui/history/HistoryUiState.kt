@@ -17,6 +17,8 @@ const val UNRATED_COUNT_CAP = 200
 data class HistoryUiState(
     /** Newest first, de-duplicated by play id. */
     val entries: List<HistoryEntryDto> = emptyList(),
+    /** Where the next page starts: rows fetched so far, duplicates included. */
+    val nextOffset: Int = 0,
     val unratedOnly: Boolean = false,
     /** Unrated plays, capped at [UNRATED_COUNT_CAP]; null until known. */
     val unratedCount: Int? = null,

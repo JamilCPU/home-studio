@@ -105,8 +105,12 @@ class QueueViewModel(
 
     // ---- Remove and clear ----
 
-    /** Removes the row at once and tells the server; a failure restores the server's list. */
+    /**
+     * Removes the row at once and tells the server; a failure restores the server's list. A row
+     * that is already gone is ignored (the swipe box may confirm the same swipe twice).
+     */
     fun remove(id: Long) {
+        if (_uiState.value.items.none { it.id == id }) return
         epoch.incrementAndGet()
         _uiState.update { s -> s.copy(items = s.items.filterNot { it.id == id }) }
         scope.launch {

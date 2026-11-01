@@ -45,12 +45,12 @@ class HistoryViewModel(
         if (s.loading || s.loadingMore || s.endReached || !s.loaded) return
         val gen = generation.get()
         _uiState.update { it.copy(loadingMore = true) }
-        pageJob = scope.launch { loadPage(gen, offset = s.entries.size) }
+        pageJob = scope.launch { loadPage(gen, offset = s.nextOffset) }
     }
 
     fun setUnratedOnly(value: Boolean) {
         if (_uiState.value.unratedOnly == value) return
-        _uiState.update { it.copy(unratedOnly = value, entries = emptyList(), loaded = false) }
+        _uiState.update { it.copy(unratedOnly = value, entries = emptyList(), nextOffset = 0, loaded = false) }
         refresh()
     }
 
@@ -65,6 +65,8 @@ class HistoryViewModel(
                     val base = if (offset == 0) emptyList() else s.entries
                     s.copy(
                         entries = base.mergedWith(page),
+                        // The raw count: duplicates dropped from a shifted page still advance it.
+                        nextOffset = offset + page.size,
                         loading = false,
                         loadingMore = false,
                         loaded = true,

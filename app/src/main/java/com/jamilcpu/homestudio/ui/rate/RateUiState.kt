@@ -14,6 +14,8 @@ data class RateUiState(
     val unreachable: Boolean = false,
     /** The rating was stored; the host closes the sheet. */
     val saved: Boolean = false,
+    /** The user changed something, so a late prefill must not overwrite the form. */
+    val edited: Boolean = false,
 ) {
     val hasInput: Boolean get() = liked != null || satisfaction != null || notes.isNotBlank()
 
