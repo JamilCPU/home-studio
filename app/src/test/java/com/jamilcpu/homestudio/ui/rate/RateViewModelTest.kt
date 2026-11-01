@@ -124,4 +124,49 @@ class RateViewModelTest {
         assertNull(vm.uiState.value.error)
         assertFalse(vm.uiState.value.saving)
     }
+
+    private fun historyWith(vararg entries: String) =
+        server.ok("GET", "/api/history") { """{"entries":[${entries.joinToString(",")}]}""" }
+
+    private fun entryJson(playId: Long, videoId: String, rating: String?) =
+        """{"play_id":$playId,"video":{"video_id":"$videoId","title":"T","channel":null,"thumbnail_url":null,"duration_s":600,"chapters":[]},"started_at":"2026-11-01T14:03:22+00:00","seconds_listened":600.0,"end_reason":"finished","source":"agent","rating":$rating}"""
+
+    @Test
+    fun openingFromNowPlayingPrefillsExistingLike() = runTest {
+        historyWith(
+            entryJson(9, "other", """{"liked":false,"satisfaction":2,"notes":null,"created_at":null}"""),
+            entryJson(8, "v1", null), // the play in progress: not rated on this row
+            entryJson(5, "v1", """{"liked":true,"satisfaction":7,"notes":"good one","created_at":null}"""),
+            entryJson(2, "v1", """{"liked":false,"satisfaction":1,"notes":null,"created_at":null}"""),
+        )
+        val vm = vm() // Now Playing knows no rating
+        awaitUntil { vm.uiState.value.liked != null }
+        val s = vm.uiState.value
+        assertEquals(true, s.liked)
+        assertEquals(7, s.satisfaction)
+        assertEquals("good one", s.notes)
+        val lookup = server.calls("GET", "/api/history").single()
+        assertEquals("50", lookup.url.parameters["limit"])
+        assertEquals("false", lookup.url.parameters["unrated"])
+    }
+
+    @Test
+    fun noEarlierRatingStartsEmpty() = runTest {
+        historyWith(entryJson(8, "v1", null), entryJson(3, "other", """{"liked":true}"""))
+        val vm = vm()
+        awaitUntil { server.calls("GET", "/api/history").isNotEmpty() }
+        settle()
+        assertEquals(RateUiState(), vm.uiState.value)
+    }
+
+    @Test
+    fun prefillNeverOverwritesEdits() = runTest {
+        historyWith(entryJson(5, "v1", """{"liked":true,"satisfaction":7}"""))
+        val vm = vm()
+        vm.toggleSatisfaction(3) // typed before the lookup answered
+        awaitUntil { server.calls("GET", "/api/history").isNotEmpty() }
+        settle()
+        assertNull(vm.uiState.value.liked)
+        assertEquals(3, vm.uiState.value.satisfaction)
+    }
 }

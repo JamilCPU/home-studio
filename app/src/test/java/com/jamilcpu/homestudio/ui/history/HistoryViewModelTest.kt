@@ -123,6 +123,33 @@ class HistoryViewModelTest {
     }
 
     @Test
+    fun fullPageOfDuplicatesStillAdvances() = runTest {
+        // New plays shifted every offset: the second page repeats the first one exactly.
+        server.ok("GET", "/api/history") { req ->
+            val unrated = req.url.parameters["unrated"] == "true"
+            val offset = req.url.parameters["offset"]!!.toInt()
+            val ids = when {
+                unrated -> emptyList()
+                offset == 0 || offset == 50 -> (1L..50L).toList()
+                offset == 100 -> (51L..60L).toList()
+                else -> emptyList()
+            }
+            """{"entries":[${ids.joinToString(",") { entryJson(it) }}]}"""
+        }
+        val vm = vm()
+        vm.start()
+        awaitUntil { vm.uiState.value.entries.size == 50 }
+        vm.loadMore()
+        awaitUntil { !vm.uiState.value.loadingMore && pages(false).size == 2 }
+        assertEquals(50, vm.uiState.value.entries.size)
+        assertFalse(vm.uiState.value.endReached)
+        vm.loadMore()
+        awaitUntil { vm.uiState.value.endReached }
+        assertEquals(listOf("0", "50", "100"), pages(false).map { it.url.parameters["offset"] })
+        assertEquals((1L..60L).toList(), vm.uiState.value.entries.map { it.playId })
+    }
+
+    @Test
     fun unreachableSetsFlag() = runTest {
         server.down = true
         val vm = vm()

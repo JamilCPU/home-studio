@@ -95,6 +95,34 @@ class MorningViewModelTest {
     }
 
     @Test
+    fun dirtyIgnoresReadOnlyFields() {
+        val saved = MorningDto(
+            enabled = true,
+            wakeTime = "07:45",
+            days = listOf(0, 1),
+            topics = listOf("AI"),
+            count = 3,
+            buildLeadMin = 5,
+            nextBuildAt = "2026-11-02T07:40:00-06:00",
+            lastOutcome = null,
+        )
+        val serverMoved = saved.copy(
+            nextBuildAt = "2026-11-03T07:40:00-06:00",
+            lastOutcome = MorningOutcomeDto(date = "2026-11-02", built = true, started = true),
+        )
+        assertFalse(MorningUiState(saved = saved, draft = serverMoved).dirty)
+        assertFalse(MorningUiState(saved = saved, draft = serverMoved).canSave)
+        listOf(
+            serverMoved.copy(enabled = false),
+            serverMoved.copy(wakeTime = "06:30"),
+            serverMoved.copy(days = listOf(0)),
+            serverMoved.copy(topics = listOf("AI", "chips")),
+            serverMoved.copy(count = 2),
+            serverMoved.copy(buildLeadMin = 10),
+        ).forEach { assertTrue(it.toString(), MorningUiState(saved = saved, draft = it).dirty) }
+    }
+
+    @Test
     fun steppersClamp() = runTest {
         val vm = started()
         vm.setCount(7)

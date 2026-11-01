@@ -136,6 +136,21 @@ class QueueViewModelTest {
     }
 
     @Test
+    fun removeTwiceSendsOneDelete() = runTest {
+        server.ok("DELETE", "/api/queue/2") { """{"removed":1}""".also { queueIds = listOf(1, 3) } }
+        val vm = started()
+        vm.remove(2)
+        vm.remove(2) // the swipe box may confirm twice
+        awaitUntil { server.calls("DELETE", "/api/queue/2").isNotEmpty() }
+        settle()
+        assertEquals(1, server.calls("DELETE", "/api/queue/2").size)
+        vm.remove(42) // not in the list: nothing sent
+        settle()
+        assertTrue(server.calls("DELETE", "/api/queue/42").isEmpty())
+        vm.stop()
+    }
+
+    @Test
     fun clearDeletesEverything() = runTest {
         val vm = started()
         vm.clear()
