@@ -3,6 +3,8 @@ package com.jamilcpu.homestudio.ui.history
 import com.jamilcpu.homestudio.data.api.ApiResult
 import com.jamilcpu.homestudio.data.api.HistoryEntryDto
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
+import com.jamilcpu.homestudio.data.api.NowPlayingDto
+import com.jamilcpu.homestudio.data.api.QueuePlacement
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -12,14 +14,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+const val NOTICE_PLAYING_AGAIN = "Playing again"
+
 /**
  * Drives the History tab: pages of [pageSize] plays, newest first, optionally unrated only.
- * [refresh] starts over from the first page; [loadMore] appends the next one.
+ * [refresh] starts over from the first page; [loadMore] appends the next one. [onPlayed] gets the
+ * player state after [playAgain], so Now Playing updates without a poll.
  */
 class HistoryViewModel(
     private val api: HomeStudioApi,
     private val scope: CoroutineScope,
     private val pageSize: Int = HISTORY_PAGE,
+    private val onPlayed: (NowPlayingDto) -> Unit = {},
 ) {
     private val _uiState = MutableStateFlow(HistoryUiState())
     val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
@@ -52,6 +58,33 @@ class HistoryViewModel(
         if (_uiState.value.unratedOnly == value) return
         _uiState.update { it.copy(unratedOnly = value, entries = emptyList(), nextOffset = 0, loaded = false) }
         refresh()
+    }
+
+    fun dismissMessages() = _uiState.update { it.copy(error = null, notice = null) }
+
+    /** Plays [entry]'s video now: queues it next, then jumps to that queue item. */
+    fun playAgain(entry: HistoryEntryDto) {
+        if (_uiState.value.playing) return
+        _uiState.update { it.copy(playing = true, error = null, notice = null) }
+        scope.launch {
+            val played = when (val queued = api.enqueue(videoId = entry.video.videoId, where = QueuePlacement.Next)) {
+                is ApiResult.Ok -> api.play(queued.value.id)
+                is ApiResult.Failure -> queued
+            }
+            when (played) {
+                is ApiResult.Ok -> {
+                    onPlayed(played.value)
+                    _uiState.update { it.copy(playing = false, notice = NOTICE_PLAYING_AGAIN) }
+                }
+                is ApiResult.Failure -> _uiState.update {
+                    if (played.kind == ApiResult.Failure.Kind.Unreachable) {
+                        it.copy(playing = false, unreachable = true)
+                    } else {
+                        it.copy(playing = false, error = played.message)
+                    }
+                }
+            }
+        }
     }
 
     private suspend fun loadPage(gen: Int, offset: Int) {

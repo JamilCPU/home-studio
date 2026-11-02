@@ -77,6 +77,10 @@ class HomeStudioApi(
 
     suspend fun stop(): ApiResult<NowPlayingDto> = call(HttpMethod.Post, "/api/player/stop")
 
+    /** Plays upcoming item [queueItemId] now; whatever was playing ends as skipped. */
+    suspend fun play(queueItemId: Long): ApiResult<NowPlayingDto> =
+        call(HttpMethod.Post, "/api/player/play", body = encode(PlayBody(queueItemId)))
+
     suspend fun seek(positionS: Double): ApiResult<NowPlayingDto> =
         call(HttpMethod.Post, "/api/player/seek", body = encode(SeekBody(positionS)))
 

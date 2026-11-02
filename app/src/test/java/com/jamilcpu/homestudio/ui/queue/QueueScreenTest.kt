@@ -125,4 +125,12 @@ class QueueScreenTest {
         assertEquals(1, server.calls("PUT", "/api/queue/order").size)
         assertEquals("""{"ids":[2,1,3]}""", server.calls("PUT", "/api/queue/order").single().bodyText())
     }
+
+    @Test
+    fun playButtonPlaysThatRow() {
+        val played = mutableListOf<Long>()
+        show(QueueUiState(items = items, loaded = true), QueueActions(onPlay = { played += it }))
+        rule.onNodeWithTag("playQueue_2").performClick()
+        assertEquals(listOf(2L), played)
+    }
 }

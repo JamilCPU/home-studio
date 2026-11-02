@@ -1,6 +1,7 @@
 package com.jamilcpu.homestudio.ui.history
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.jamilcpu.homestudio.data.api.HistoryEntryDto
@@ -74,5 +75,27 @@ class HistoryScreenTest {
         rule.onNodeWithText("Can't reach your Pi").assertExists()
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retries)
+    }
+
+    @Test
+    fun playButtonPlaysAgainWithoutOpeningRate() {
+        val played = mutableListOf<String>()
+        val opened = mutableListOf<String>()
+        show(
+            HistoryUiState(entries = listOf(rated, unrated), loaded = true),
+            HistoryActions(onPlay = { played += it.video.videoId }, onOpen = { opened += it.video.videoId }),
+        )
+        rule.onNodeWithTag("playHistory_${unrated.playId}").performClick()
+        assertEquals(listOf(unrated.video.videoId), played)
+        assertEquals(emptyList<String>(), opened)
+    }
+
+    @Test
+    fun noticeShowsWithDismiss() {
+        var dismissed = 0
+        show(HistoryUiState(loaded = true, notice = "Playing again"), HistoryActions(onDismiss = { dismissed++ }))
+        rule.onNodeWithText("Playing again").assertExists()
+        rule.onNodeWithText("Dismiss").performClick()
+        assertEquals(1, dismissed)
     }
 }

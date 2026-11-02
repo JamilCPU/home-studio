@@ -1,10 +1,13 @@
 package com.jamilcpu.homestudio.ui.history
 
 import com.jamilcpu.homestudio.FakeServer
+import com.jamilcpu.homestudio.Reply
 import com.jamilcpu.homestudio.awaitUntil
+import com.jamilcpu.homestudio.bodyText
 import com.jamilcpu.homestudio.data.api.HistoryEntryDto
 import com.jamilcpu.homestudio.data.api.RatingDto
 import com.jamilcpu.homestudio.data.api.VideoDto
+import com.jamilcpu.homestudio.queueItemJson
 import com.jamilcpu.homestudio.settle
 import java.time.LocalDate
 import java.time.ZoneId
@@ -159,5 +162,33 @@ class HistoryViewModelTest {
         server.down = false
         vm.refresh()
         awaitUntil { !vm.uiState.value.unreachable && vm.uiState.value.entries.isNotEmpty() }
+    }
+
+    @Test
+    fun playAgainQueuesNextThenPlaysIt() = runTest {
+        server.ok("POST", "/api/queue") { queueItemJson(9, source = "user") }
+        server.ok("POST", "/api/player/play") {
+            """{"state":"playing","item":${queueItemJson(9)},"position_s":0.0,"duration_s":600.0,"output_device":"Echo"}"""
+        }
+        val published = mutableListOf<Long?>()
+        val vm = HistoryViewModel(
+            server.api(), CoroutineScope(StandardTestDispatcher(testScheduler)),
+            onPlayed = { published += it.item?.id },
+        )
+        vm.playAgain(entry(1))
+        awaitUntil { vm.uiState.value.notice == NOTICE_PLAYING_AGAIN }
+        assertEquals("""{"video_id":"v1","where":"next"}""", server.calls("POST", "/api/queue").single().bodyText())
+        assertEquals("""{"queue_item_id":9}""", server.calls("POST", "/api/player/play").single().bodyText())
+        assertEquals(listOf<Long?>(9), published)
+    }
+
+    @Test
+    fun playAgainEnqueueFailureShowsErrorAndDoesNotPlay() = runTest {
+        server.reply("POST", "/api/queue") { Reply(404, FakeServer.err("video not found")) }
+        val vm = vm()
+        vm.playAgain(entry(1))
+        awaitUntil { vm.uiState.value.error != null }
+        assertEquals("video not found", vm.uiState.value.error)
+        assertTrue(server.calls("POST", "/api/player/play").isEmpty())
     }
 }

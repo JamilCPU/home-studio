@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
@@ -35,7 +37,7 @@ import androidx.compose.ui.zIndex
 import com.jamilcpu.homestudio.data.api.QueueItemDto
 import com.jamilcpu.homestudio.ui.now.formatClock
 
-/** One queue row: swipe either way to remove; long-press the handle and drag to reorder. */
+/** One queue row: ▶ plays it now; swipe either way to remove; long-press the handle and drag to reorder. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun QueueRow(item: QueueItemDto, items: List<QueueItemDto>, enabled: Boolean, actions: QueueActions) {
@@ -57,6 +59,13 @@ internal fun QueueRow(item: QueueItemDto, items: List<QueueItemDto>, enabled: Bo
             .testTag("queueRow_${item.id}"),
     ) {
         ListItem(
+            leadingContent = {
+                IconButton(
+                    onClick = { actions.onPlay(item.id) },
+                    enabled = enabled,
+                    modifier = Modifier.testTag("playQueue_${item.id}"),
+                ) { Icon(Icons.Filled.PlayArrow, contentDescription = "Play now") }
+            },
             overlineContent = { Text(sourceLabel(item.source)) },
             headlineContent = { Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             supportingContent = details(item)?.let { text -> { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) } },

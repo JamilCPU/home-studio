@@ -1,6 +1,7 @@
 package com.jamilcpu.homestudio.ui.queue
 
 import com.jamilcpu.homestudio.FakeServer
+import com.jamilcpu.homestudio.Reply
 import com.jamilcpu.homestudio.awaitUntil
 import com.jamilcpu.homestudio.bodyText
 import com.jamilcpu.homestudio.queueItemJson
@@ -197,6 +198,35 @@ class QueueViewModelTest {
         vm.refresh()
         awaitUntil { !vm.uiState.value.unreachable && vm.uiState.value.loaded }
         assertNull(vm.uiState.value.error)
+        vm.stop()
+    }
+
+    @Test
+    fun playNowJumpsToItemAndPublishesNowPlaying() = runTest {
+        server.ok("POST", "/api/player/play") {
+            """{"state":"playing","item":${queueItemJson(2)},"position_s":0.0,"duration_s":600.0,"output_device":"Echo"}"""
+        }
+        val published = mutableListOf<Long?>()
+        val vm = QueueViewModel(
+            server.api(), CoroutineScope(StandardTestDispatcher(testScheduler)),
+            onPlayed = { published += it.item?.id },
+        )
+        vm.start()
+        awaitUntil { vm.uiState.value.loaded }
+        vm.playNow(2)
+        awaitUntil { vm.uiState.value.notice == NOTICE_PLAYING }
+        assertEquals("""{"queue_item_id":2}""", server.calls("POST", "/api/player/play").single().bodyText())
+        assertEquals(listOf<Long?>(2), published)
+        vm.stop()
+    }
+
+    @Test
+    fun playNowFailureShowsError() = runTest {
+        server.reply("POST", "/api/player/play") { Reply(404, FakeServer.err("queue item not found")) }
+        val vm = started()
+        vm.playNow(3)
+        awaitUntil { vm.uiState.value.error != null }
+        assertEquals("queue item not found", vm.uiState.value.error)
         vm.stop()
     }
 }

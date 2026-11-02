@@ -188,6 +188,9 @@ internal data class SeekBody(@SerialName("position_s") val positionS: Double)
 internal data class SkipBody(@SerialName("delta_s") val deltaS: Double)
 
 @Serializable
+internal data class PlayBody(@SerialName("queue_item_id") val queueItemId: Long)
+
+@Serializable
 internal data class EnqueueBody(
     @SerialName("video_id") val videoId: String? = null,
     val url: String? = null,

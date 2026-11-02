@@ -2,6 +2,7 @@ package com.jamilcpu.homestudio.ui.queue
 
 import com.jamilcpu.homestudio.data.api.ApiResult
 import com.jamilcpu.homestudio.data.api.HomeStudioApi
+import com.jamilcpu.homestudio.data.api.NowPlayingDto
 import com.jamilcpu.homestudio.data.api.QueuePlacement
 import com.jamilcpu.homestudio.ui.common.ExclusiveRunner
 import java.util.concurrent.atomic.AtomicInteger
@@ -16,15 +17,18 @@ import kotlinx.coroutines.launch
 
 const val QUEUE_POLL_MS = 5_000L
 const val NOTICE_ADDED = "Added to the end of the queue"
+const val NOTICE_PLAYING = "Playing now"
 
 /**
  * Drives the Queue tab. Polls every [pollIntervalMs] between [start] and [stop] (the screen ties
  * them to the lifecycle). While a row is dragged the order is local; one reorder is sent on drop.
+ * [onPlayed] gets the player state after [playNow], so Now Playing updates without a poll.
  */
 class QueueViewModel(
     private val api: HomeStudioApi,
     private val scope: CoroutineScope,
     private val pollIntervalMs: Long = QUEUE_POLL_MS,
+    private val onPlayed: (NowPlayingDto) -> Unit = {},
 ) {
     private val _uiState = MutableStateFlow(QueueUiState())
     val uiState: StateFlow<QueueUiState> = _uiState.asStateFlow()
@@ -101,6 +105,22 @@ class QueueViewModel(
             }
         }
         if (!started) refresh() // something else was running: show the server's order again
+    }
+
+    // ---- Play ----
+
+    /** Plays row [id] now; the rows above it stay queued. */
+    fun playNow(id: Long) {
+        exclusive.run {
+            when (val r = api.play(id)) {
+                is ApiResult.Ok -> {
+                    onPlayed(r.value)
+                    _uiState.update { it.copy(notice = NOTICE_PLAYING, error = null) }
+                }
+                is ApiResult.Failure -> fail(r)
+            }
+            load()
+        }
     }
 
     // ---- Remove and clear ----

@@ -12,11 +12,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,9 +51,11 @@ data class HistoryActions(
     val onUnratedOnly: (Boolean) -> Unit = {},
     val onLoadMore: () -> Unit = {},
     val onOpen: (HistoryEntryDto) -> Unit = {},
+    val onPlay: (HistoryEntryDto) -> Unit = {},
+    val onDismiss: () -> Unit = {},
 )
 
-/** Stateful entry used by the nav graph: refreshes on start; a row opens the shell's Rate sheet. */
+/** Stateful entry used by the nav graph: refreshes on start; a row opens the shell's Rate sheet, ▶ plays it again. */
 @Composable
 fun HistoryRoute(vm: HistoryViewModel, rateSheet: RateSheetController) {
     LifecycleStartEffect(vm) {
@@ -62,6 +69,8 @@ fun HistoryRoute(vm: HistoryViewModel, rateSheet: RateSheetController) {
             onUnratedOnly = vm::setUnratedOnly,
             onLoadMore = vm::loadMore,
             onOpen = { entry -> rateSheet.open(entry.video.videoId, entry.video.title, entry.rating) },
+            onPlay = vm::playAgain,
+            onDismiss = vm::dismissMessages,
         )
     }
     HistoryScreen(state, actions)
@@ -77,13 +86,13 @@ fun HistoryScreen(state: HistoryUiState, actions: HistoryActions) {
     Column(Modifier.fillMaxSize().testTag("screen_history")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.unreachable) UnreachableBanner(actions.onRetry)
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("historyError")) }
+            Messages(state, actions.onDismiss)
             Filters(state, actions.onUnratedOnly)
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("historyList"), state = listState) {
             groups.forEach { group ->
                 item(key = "day_${group.entries.first().playId}") { DayHeader(group.label) }
-                items(group.entries, key = { it.playId }) { entry -> HistoryRow(entry) { actions.onOpen(entry) } }
+                items(group.entries, key = { it.playId }) { entry -> HistoryRow(entry, playEnabled = !state.playing, onPlay = { actions.onPlay(entry) }) { actions.onOpen(entry) } }
             }
             if (state.loadingMore || (state.loading && state.entries.isEmpty())) {
                 item(key = "loading") { Loading() }
@@ -139,9 +148,28 @@ private fun DayHeader(label: String) {
 }
 
 @Composable
-private fun HistoryRow(entry: HistoryEntryDto, onClick: () -> Unit) {
+private fun Messages(state: HistoryUiState, onDismiss: () -> Unit) {
+    val message = state.error ?: state.notice ?: return
+    val isError = state.error != null
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            message,
+            Modifier.weight(1f).testTag(if (isError) "historyError" else "historyNotice"),
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onDismiss) { Text("Dismiss") }
+    }
+}
+
+@Composable
+private fun HistoryRow(entry: HistoryEntryDto, playEnabled: Boolean, onPlay: () -> Unit, onClick: () -> Unit) {
     ListItem(
         modifier = Modifier.clickable(onClick = onClick).testTag("historyRow_${entry.playId}"),
+        leadingContent = {
+            IconButton(onClick = onPlay, enabled = playEnabled, modifier = Modifier.testTag("playHistory_${entry.playId}")) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = "Play again")
+            }
+        },
         headlineContent = { Text(entry.video.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         supportingContent = entry.video.channel?.let { channel -> { Text(channel, maxLines = 1) } },
         trailingContent = { Text(rowLabel(entry), style = MaterialTheme.typography.labelLarge) },

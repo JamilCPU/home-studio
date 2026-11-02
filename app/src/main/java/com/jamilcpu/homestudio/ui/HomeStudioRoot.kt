@@ -104,8 +104,8 @@ private fun AppShell(
     val scope = rememberCoroutineScope()
     // Hoisted above the NavHost so a half-typed request survives switching tabs.
     val agentVm = remember(api) { AgentViewModel(api, scope) }
-    val queueVm = remember(api) { QueueViewModel(api, scope) }
-    val historyVm = remember(api) { HistoryViewModel(api, scope) }
+    val queueVm = remember(api) { QueueViewModel(api, scope, onPlayed = nowRepo::publish) }
+    val historyVm = remember(api) { HistoryViewModel(api, scope, onPlayed = nowRepo::publish) }
     val tasteVm = remember(api) { TasteViewModel(api, scope) }
     val morningVm = remember(api) { MorningViewModel(api, scope) }
     val snackbar = remember { SnackbarHostState() }

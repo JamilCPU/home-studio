@@ -28,6 +28,10 @@ data class HistoryUiState(
     val loaded: Boolean = false,
     val unreachable: Boolean = false,
     val error: String? = null,
+    /** "Playing again" after a row's Play button worked. */
+    val notice: String? = null,
+    /** A Play request is in flight; further Play taps are ignored. */
+    val playing: Boolean = false,
 )
 
 /** One day's plays under its label. */
