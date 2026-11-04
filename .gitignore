@@ -12,3 +12,25 @@ local.properties
 /app/release
 *.apk
 *.aab
+
+# Extra ignores
+.env
+.env.*
+!.env.example
+*.keys
+*.jks
+*.keystore
+*.db
+*.sqlite
+*.sqlite3
+node_modules/
+bin/
+obj/
+dist/
+build/
+.vs/
+.idea/
+*.class
+target/
+__pycache__/
+venv/
